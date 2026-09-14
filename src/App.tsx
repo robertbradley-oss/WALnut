@@ -1,0 +1,852 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { FormEvent } from "react";
+import type {
+  CommandResponse,
+  CommandResult,
+  EngineEvent,
+  Snapshot,
+  StoredRecord,
+} from "./types";
+
+const byteLength = (value: string) => new TextEncoder().encode(value).length;
+const hex = (value: number, digits = 2) =>
+  value.toString(16).padStart(digits, "0").toUpperCase();
+const eventLabels: Record<string, string> = {
+  opened: "Page opened",
+  created: "Database created",
+  write_started: "Page encoded",
+  page_written: "Page written",
+  file_synced: "File synced",
+  page_verified: "Read-back verified",
+  read_found: "Key found",
+  read_missing: "Key not found",
+  write_failed: "Write failed",
+};
+
+function Arrow({ reverse = false }: { reverse?: boolean }) {
+  return (
+    <svg
+      className={reverse ? "arrow reverse" : "arrow"}
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+    >
+      <path d="M4 10h12m-5-5 5 5-5 5" />
+    </svg>
+  );
+}
+
+async function request<T>(path: string, body?: unknown): Promise<T> {
+  const response = await fetch(`/api/${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers:
+      body === undefined
+        ? undefined
+        : {
+            "Content-Type": "application/json",
+            "X-Walnut-Client": "inspector-v1",
+          },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(6000),
+  });
+  const text = await response.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new Error("The engine is unavailable. Start WALnut, then reconnect.");
+  }
+  if (!response.ok)
+    throw new Error(data.error?.message || "The command could not complete.");
+  return data as T;
+}
+
+function PageMap({
+  snapshot,
+  selected,
+  onSelect,
+}: {
+  snapshot: Snapshot;
+  selected?: StoredRecord;
+  onSelect: (key: string) => void;
+}) {
+  const x = 34,
+    y = 34,
+    width = 612,
+    height = 116;
+  const usedWidth = (snapshot.used_bytes / snapshot.page_size) * width;
+  return (
+    <div className="page-map">
+      <div className="map-label">
+        <span>
+          <span className="tiny-square" /> PAGE 0000
+        </span>
+        <span>{snapshot.page_size.toLocaleString()} BYTES</span>
+      </div>
+      <svg
+        viewBox="0 0 680 188"
+        role="img"
+        aria-label={`Page 0: ${snapshot.used_bytes} of 4096 bytes used`}
+      >
+        <defs>
+          <pattern
+            id="free-space"
+            width="8"
+            height="8"
+            patternUnits="userSpaceOnUse"
+          >
+            <path d="M0 8 8 0" stroke="var(--line)" strokeWidth=".55" />
+          </pattern>
+        </defs>
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          rx="6"
+          fill="url(#free-space)"
+          stroke="var(--line-bright)"
+        />
+        <rect
+          x={x}
+          y={y}
+          width={(snapshot.header_size / snapshot.page_size) * width}
+          height={height}
+          fill="#8d9fac"
+        />
+        {snapshot.records.map((record, index) => (
+          <rect
+            key={record.key}
+            x={x + (record.offset / 4096) * width}
+            y={y}
+            width={(record.length / snapshot.page_size) * width}
+            height={height}
+            fill={
+              record.key === selected?.key
+                ? "var(--accent)"
+                : index % 2
+                  ? "#bd9361"
+                  : "#8c7351"
+            }
+            opacity={record.key === selected?.key ? 1 : 0.75}
+            onClick={() => onSelect(record.key)}
+          >
+            <title>
+              {record.key}: {record.length} bytes
+            </title>
+          </rect>
+        ))}
+        <line
+          x1={x + usedWidth}
+          x2={x + usedWidth}
+          y1={y - 9}
+          y2={y + height + 9}
+          stroke="var(--accent)"
+          strokeWidth="1"
+        />
+        <text x={x} y={y - 16} fill="var(--muted)" fontSize="10">
+          0x0000
+        </text>
+        <text
+          x={x + width}
+          y={y - 16}
+          textAnchor="end"
+          fill="var(--muted)"
+          fontSize="10"
+        >
+          0x0FFF
+        </text>
+        {usedWidth < width * 0.7 && (
+          <>
+            <text
+              x={x + usedWidth + (width - usedWidth) / 2}
+              y="88"
+              textAnchor="middle"
+              fill="var(--muted)"
+              fontSize="12"
+            >
+              ROOM TO GROW
+            </text>
+            <text
+              x={x + usedWidth + (width - usedWidth) / 2}
+              y="110"
+              textAnchor="middle"
+              fill="var(--quiet)"
+              fontSize="11"
+            >
+              {(4096 - snapshot.used_bytes).toLocaleString()} bytes free
+            </text>
+          </>
+        )}
+        <text x={x} y="177" fill="var(--accent)" fontSize="10">
+          {snapshot.used_bytes} bytes used
+        </text>
+        <text
+          x={x + width}
+          y="177"
+          textAnchor="end"
+          fill="var(--quiet)"
+          fontSize="10"
+        >
+          ONE PAGE · FORMAT V1
+        </text>
+      </svg>
+      <div className="map-legend">
+        <span>
+          <i className="header-dot" /> Header <b>32 B</b>
+        </span>
+        <span>
+          <i className="record-dot" /> Records{" "}
+          <b>{snapshot.used_bytes - 32} B</b>
+        </span>
+        <span>
+          <i className="free-dot" /> Free <b>{4096 - snapshot.used_bytes} B</b>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function ByteInspector({
+  snapshot,
+  selected,
+}: {
+  snapshot: Snapshot;
+  selected?: StoredRecord;
+}) {
+  const [windowStart, setWindowStart] = useState(0);
+  useEffect(() => {
+    setWindowStart(selected ? Math.floor(selected.offset / 256) * 256 : 0);
+  }, [selected?.key, selected?.offset]);
+  const group = (offset: number) => {
+    if (offset < 32) return "header-byte";
+    if (
+      selected &&
+      offset >= selected.offset &&
+      offset < selected.offset + selected.length
+    ) {
+      if (offset < selected.key_offset) return "length-byte";
+      return offset < selected.value_offset ? "key-byte" : "value-byte";
+    }
+    return offset < snapshot.used_bytes ? "stored-byte" : "empty-byte";
+  };
+  return (
+    <section className="byte-inspector" aria-labelledby="bytes-heading">
+      <div className="section-heading">
+        <h2 id="bytes-heading">
+          Under the hood <span>HEX VIEW</span>
+        </h2>
+        <span className="muted mono">16 bytes / row</span>
+      </div>
+      <p className="section-note">
+        The bytes read back from your file. Select a record to locate its key
+        and value.
+      </p>
+      <div className="hex-scroll">
+        <table className="hex-table" aria-label="Encoded page bytes">
+          <thead>
+            <tr>
+              <th scope="col">OFFSET</th>
+              {Array.from({ length: 16 }, (_, i) => (
+                <th scope="col" key={i}>
+                  {hex(i)}
+                </th>
+              ))}
+              <th scope="col" className="ascii">
+                TEXT
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 16 }, (_, row) => {
+              const offset = windowStart + row * 16;
+              return (
+                <tr key={offset}>
+                  <th scope="row">{hex(offset, 4)}</th>
+                  {snapshot.bytes
+                    .slice(offset, offset + 16)
+                    .map((byte, column) => (
+                      <td
+                        key={column}
+                        className={group(offset + column)}
+                        title={`Offset ${offset + column} · ${byte} decimal`}
+                      >
+                        {hex(byte)}
+                      </td>
+                    ))}
+                  <td className="ascii">
+                    {snapshot.bytes
+                      .slice(offset, offset + 16)
+                      .map((byte) =>
+                        byte >= 32 && byte <= 126
+                          ? String.fromCharCode(byte)
+                          : "·",
+                      )
+                      .join("")}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="byte-footer">
+        <div className="byte-legend">
+          <span>
+            <i className="header-dot" /> Header
+          </span>
+          <span>
+            <i className="key-dot" /> Key
+          </span>
+          <span>
+            <i className="record-dot" /> Value
+          </span>
+        </div>
+        <div className="byte-paging">
+          <button
+            aria-label="Previous 256 bytes"
+            disabled={windowStart === 0}
+            onClick={() => setWindowStart((s) => s - 256)}
+          >
+            <Arrow reverse />
+          </button>
+          <span>
+            {hex(windowStart, 4)}–{hex(windowStart + 255, 4)}
+          </span>
+          <button
+            aria-label="Next 256 bytes"
+            disabled={windowStart >= 3840}
+            onClick={() => setWindowStart((s) => s + 256)}
+          >
+            <Arrow />
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function EventLog({ events }: { events: EngineEvent[] }) {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  return (
+    <section className="events-panel" aria-labelledby="events-heading">
+      <div className="section-heading">
+        <h2 id="events-heading">Engine activity</h2>
+        <span className="live-tag">
+          <i /> LIVE
+        </span>
+      </div>
+      <p className="section-note">Real events from this engine session.</p>
+      <ol className="event-list">
+        {[...events]
+          .reverse()
+          .slice(0, 16)
+          .map((event) => {
+            const id = `${event.session_id}:${event.sequence}`;
+            return (
+              <li
+                key={id}
+                className={event.kind === "page_verified" ? "verified" : ""}
+              >
+                <button
+                  aria-expanded={expanded === id}
+                  onClick={() => setExpanded(expanded === id ? null : id)}
+                >
+                  <span className="event-dot" />
+                  <span className="event-text">
+                    <strong>{eventLabels[event.kind] || event.kind}</strong>
+                    <small>{event.key ?? "page 0000"}</small>
+                  </span>
+                  <span className="event-number">
+                    {String(event.sequence).padStart(3, "0")}
+                  </span>
+                </button>
+                {expanded === id && (
+                  <p className="event-detail">
+                    {event.detail}
+                    <span>
+                      Operation {event.operation} · generation{" "}
+                      {event.generation}
+                    </span>
+                  </p>
+                )}
+              </li>
+            );
+          })}
+      </ol>
+      <p className="activity-foot">Latest 16 events · resets on reopen</p>
+    </section>
+  );
+}
+
+export default function App() {
+  const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
+  const [connected, setConnected] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  const requestId = useRef(0);
+  const [connectionError, setConnectionError] = useState("");
+  const [commandError, setCommandError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [operation, setOperation] = useState<"put" | "get">("put");
+  const [key, setKey] = useState("hello");
+  const [value, setValue] = useState("from the inside");
+  const [selectedKey, setSelectedKey] = useState<string>();
+  const [result, setResult] = useState<CommandResult | null>(null);
+  const keyInput = useRef<HTMLInputElement>(null);
+
+  const accept = useCallback((next: Snapshot) => {
+    if (
+      next.schema_version !== 1 ||
+      next.format_version !== 1 ||
+      next.bytes.length !== 4096
+    )
+      throw new Error("This inspector needs page and event format version 1.");
+    setSnapshot(next);
+    setConnected(true);
+    setConnectionError("");
+  }, []);
+
+  const refresh = useCallback(async () => {
+    if (busyRef.current) return;
+    const id = ++requestId.current;
+    try {
+      const next = await request<Snapshot>("snapshot");
+      if (requestId.current === id) accept(next);
+    } catch (error) {
+      if (requestId.current === id) {
+        setConnected(false);
+        setConnectionError(
+          error instanceof Error ? error.message : "Cannot reach the engine.",
+        );
+      }
+    }
+  }, [accept]);
+  useEffect(() => {
+    void refresh();
+    const interval = setInterval(() => void refresh(), 1500);
+    return () => {
+      clearInterval(interval);
+      requestId.current++;
+    };
+  }, [refresh]);
+
+  async function execute(kind: "put" | "get" | "reopen") {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    ++requestId.current;
+    setCommandError("");
+    setNotice("");
+    setResult(null);
+    try {
+      const next = await request<CommandResponse>(
+        kind,
+        kind === "reopen" ? {} : kind === "get" ? { key } : { key, value },
+      );
+      accept(next.snapshot);
+      if (next.result) {
+        setResult(next.result);
+        if (next.result.found) setSelectedKey(next.result.key);
+        setNotice(
+          kind === "put"
+            ? `Saved “${key}”. File synchronized and read-back verified.`
+            : next.result.found
+              ? `Found “${key}”.`
+              : `“${key}” is not in this page.`,
+        );
+      } else {
+        setNotice("File reopened. Page format and checksum verified.");
+      }
+    } catch (error) {
+      setCommandError(
+        error instanceof Error ? error.message : "The command failed.",
+      );
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    void execute(operation);
+  }
+  const selected = snapshot?.records.find(
+    (record) => record.key === selectedKey,
+  );
+  const invalidKey = byteLength(key) === 0 || byteLength(key) > 64;
+  const invalidValue = operation === "put" && byteLength(value) > 1024;
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <a className="brand" href="/" aria-label="WALnut home">
+          <img src="/walnut.svg" alt="" />
+          <span>
+            WAL<span className="brand-light">nut</span>
+            <sup>α</sup>
+          </span>
+        </a>
+        <div className="topbar-center">
+          <span className="stage-number">01</span> STORAGE FOUNDATION
+        </div>
+        <span
+          className={`connection ${connected ? "online" : ""}`}
+          role="status"
+        >
+          <i />
+          {connected ? "Engine connected" : "Engine offline"}
+        </span>
+      </header>
+      <main>
+        <section className="intro">
+          <div>
+            <p className="eyebrow">THE DATABASE, OPENED UP</p>
+            <h1>
+              Small database.
+              <br />
+              <span>Nothing hidden.</span>
+            </h1>
+            <p className="intro-copy">
+              Write a little data. Follow every byte.
+              <br />A real storage engine, with the lid off.
+            </p>
+          </div>
+          <div className="file-card">
+            <div className="file-symbol">
+              <span />
+              <span />
+              <span />
+            </div>
+            <div>
+              <span className="eyebrow">YOUR DATABASE</span>
+              <strong>{snapshot?.database_name || "Connecting…"}</strong>
+              <small>
+                <i /> Local file <span>·</span>{" "}
+                {snapshot ? "4 KB on disk" : "Waiting for engine"}
+              </small>
+            </div>
+          </div>
+        </section>
+
+        {connectionError && (
+          <div className="connection-banner" role="alert">
+            <div>
+              <strong>Connection needs attention</strong>
+              <p>
+                {connectionError}
+                {snapshot
+                  ? " The page below is the last verified snapshot."
+                  : ""}
+              </p>
+            </div>
+            <button
+              className="secondary"
+              onClick={() => void refresh()}
+              disabled={busy}
+            >
+              Reconnect
+            </button>
+          </div>
+        )}
+
+        <div className="workspace-heading">
+          <div>
+            <span className="section-index">01 /</span>
+            <h2>Inside the page</h2>
+          </div>
+          <span className="muted">One file. One page. Yours to inspect.</span>
+        </div>
+        <div className={`workspace ${!connected ? "is-offline" : ""}`}>
+          <div className="engine-panel">
+            <div className="panel-topline">
+              <span className="mono">PAGE EXPLORER</span>
+              <div className="checksum">
+                <i />
+                {snapshot ? `CRC32 ${snapshot.checksum}` : "Awaiting checksum"}
+              </div>
+            </div>
+            {snapshot ? (
+              <>
+                <div className="stats">
+                  <div>
+                    <span>Records</span>
+                    <strong data-testid="record-count">
+                      {snapshot.records.length.toString().padStart(2, "0")}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Space used</span>
+                    <strong>
+                      {((snapshot.used_bytes / 4096) * 100).toFixed(1)}
+                      <small>%</small>
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Generation</span>
+                    <strong data-testid="generation">
+                      {snapshot.generation.toString().padStart(2, "0")}
+                    </strong>
+                  </div>
+                  <div>
+                    <span>Page size</span>
+                    <strong>
+                      4<small>KB</small>
+                    </strong>
+                  </div>
+                </div>
+                <PageMap
+                  snapshot={snapshot}
+                  selected={selected}
+                  onSelect={setSelectedKey}
+                />
+                <section
+                  className="records-section"
+                  aria-labelledby="records-heading"
+                >
+                  <div className="section-heading">
+                    <h2 id="records-heading">
+                      Stored records <span>{snapshot.records.length}</span>
+                    </h2>
+                    <span className="muted">Ordered by key</span>
+                  </div>
+                  {snapshot.records.length ? (
+                    <div className="records-scroll">
+                      <table className="records-table">
+                        <thead>
+                          <tr>
+                            <th>KEY</th>
+                            <th>VALUE</th>
+                            <th>BYTES</th>
+                            <th>OFFSET</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {snapshot.records.map((record) => (
+                            <tr
+                              key={record.key}
+                              className={
+                                selectedKey === record.key ? "selected-row" : ""
+                              }
+                            >
+                              <td>
+                                <button
+                                  className="record-key"
+                                  aria-pressed={selectedKey === record.key}
+                                  onClick={() => setSelectedKey(record.key)}
+                                >
+                                  <span className="record-icon">⌑</span>
+                                  {record.key}
+                                </button>
+                              </td>
+                              <td title={record.value}>
+                                {record.value === "" ? (
+                                  <em>empty string</em>
+                                ) : (
+                                  record.value
+                                )}
+                              </td>
+                              <td>{record.length}</td>
+                              <td>{hex(record.offset, 4)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="empty-records">
+                      <span className="empty-icon">{"{ }"}</span>
+                      <div>
+                        <strong>An empty page is a good beginning.</strong>
+                        <p>
+                          Run your first write to give these bytes a little
+                          meaning.
+                        </p>
+                      </div>
+                      <button
+                        className="text-button"
+                        onClick={() => keyInput.current?.focus()}
+                      >
+                        Write a record <Arrow />
+                      </button>
+                    </div>
+                  )}
+                </section>
+                {selected && (
+                  <div className="selection-detail">
+                    <span>
+                      INSPECTING <strong>{selected.key}</strong>
+                    </span>
+                    <span>
+                      Key {selected.key_length} B <i /> Value{" "}
+                      {selected.value_length} B <i /> Length fields 4 B
+                    </span>
+                  </div>
+                )}
+                <ByteInspector snapshot={snapshot} selected={selected} />
+              </>
+            ) : (
+              <div className="waiting-state">
+                <span className="empty-icon">⌑</span>
+                <h2>Waiting for your page</h2>
+                <p>WALnut will show the file as soon as the engine connects.</p>
+              </div>
+            )}
+          </div>
+
+          <aside className="side-column">
+            <section
+              className="command-panel"
+              aria-labelledby="command-heading"
+            >
+              <div className="section-heading">
+                <h2 id="command-heading">Give it a command</h2>
+                <span className="command-symbol">&gt;_</span>
+              </div>
+              <p className="section-note">Small input. Real changes on disk.</p>
+              <div
+                className="operation-switch"
+                role="group"
+                aria-label="Operation"
+              >
+                <button
+                  aria-pressed={operation === "put"}
+                  onClick={() => {
+                    setOperation("put");
+                    setResult(null);
+                    setNotice("");
+                  }}
+                >
+                  PUT <span>Write</span>
+                </button>
+                <button
+                  aria-pressed={operation === "get"}
+                  onClick={() => {
+                    setOperation("get");
+                    setResult(null);
+                    setNotice("");
+                  }}
+                >
+                  GET <span>Read</span>
+                </button>
+              </div>
+              <form onSubmit={submit}>
+                <label htmlFor="record-key">
+                  Key{" "}
+                  <span
+                    aria-hidden="true"
+                    className={invalidKey && key.length ? "invalid-count" : ""}
+                  >
+                    {byteLength(key)} / 64 B
+                  </span>
+                </label>
+                <input
+                  ref={keyInput}
+                  id="record-key"
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={key}
+                  onChange={(event) => setKey(event.target.value)}
+                  aria-invalid={invalidKey && key.length > 0}
+                  aria-describedby="key-limit"
+                />
+                <span className="sr-only" id="key-limit">
+                  1 to 64 UTF-8 bytes.
+                </span>
+                {operation === "put" && (
+                  <>
+                    <label htmlFor="record-value">
+                      Value{" "}
+                      <span
+                        aria-hidden="true"
+                        className={invalidValue ? "invalid-count" : ""}
+                      >
+                        {byteLength(value)} / 1,024 B
+                      </span>
+                    </label>
+                    <textarea
+                      id="record-value"
+                      spellCheck={false}
+                      value={value}
+                      onChange={(event) => setValue(event.target.value)}
+                      aria-invalid={invalidValue}
+                      aria-describedby="value-limit"
+                      rows={3}
+                    />
+                    <span className="sr-only" id="value-limit">
+                      At most 1,024 UTF-8 bytes, subject to remaining page
+                      space.
+                    </span>
+                  </>
+                )}
+                <button
+                  className="run-button"
+                  disabled={busy || !connected || invalidKey || invalidValue}
+                  type="submit"
+                >
+                  <span>
+                    {busy
+                      ? "Working…"
+                      : operation === "put"
+                        ? "Write to page"
+                        : "Find this key"}
+                  </span>
+                  <Arrow />
+                </button>
+              </form>
+              <div className="command-feedback" aria-live="polite">
+                {commandError ? (
+                  <p className="error-text" role="alert">
+                    {commandError}
+                  </p>
+                ) : notice ? (
+                  <p className="success-text">{notice}</p>
+                ) : (
+                  <p>UTF-8 text · Case-sensitive keys</p>
+                )}
+                {operation === "get" && result?.found && (
+                  <output className="read-result" aria-label="Read value">
+                    {result.value === "" ? "(empty string)" : result.value}
+                  </output>
+                )}
+              </div>
+              <div className="reopen-row">
+                <div>
+                  <strong>Still there?</strong>
+                  <span>Close and reopen the file.</span>
+                </div>
+                <button
+                  className="reopen-button"
+                  onClick={() => void execute("reopen")}
+                  disabled={busy}
+                  aria-label="Reopen database"
+                >
+                  <svg viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M15.5 7A6 6 0 1 0 16 12M15.5 3v4h-4" />
+                  </svg>
+                </button>
+              </div>
+            </section>
+            {snapshot && <EventLog events={snapshot.events} />}
+            <div className="foundation-note">
+              <span className="note-mark">i</span>
+              <p>
+                <strong>A foundation you can inspect.</strong>Stage 1 writes and
+                reopens a single page. Recovery and page splits arrive in the
+                next stages.
+              </p>
+            </div>
+          </aside>
+        </div>
+      </main>
+      <footer>
+        <span>
+          <img src="/walnut.svg" alt="" /> A tiny database with its internals on
+          display.
+        </span>
+        <span>
+          RUST ENGINE <i /> REAL FILES <i /> NO MAGIC
+        </span>
+      </footer>
+    </div>
+  );
+}

@@ -1,0 +1,11 @@
+/target/
+/node_modules/
+/dist/
+/.tools/
+/work/
+/data/
+/playwright-report/
+/test-results/
+*.db
+*.wal
+*.log

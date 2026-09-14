@@ -1,0 +1,37 @@
+{
+  "name": "walnut",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.19.0 <25"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "start": "node scripts/dev.mjs --built",
+    "walnut": "node scripts/cargo.mjs run --bin walnut --",
+    "cargo": "node scripts/cargo.mjs",
+    "build": "tsc -b && vite build",
+    "test:core": "node scripts/cargo.mjs test --workspace --locked",
+    "browser:install": "node scripts/browser.mjs install chromium",
+    "test:e2e": "npm run build && node scripts/cargo.mjs build --locked && node scripts/browser.mjs test",
+    "format": "prettier --write src scripts tests docs README.md AGENTS.md package.json tsconfig.json vite.config.ts playwright.config.ts .github/workflows/ci.yml",
+    "check": "prettier --check src scripts tests docs README.md AGENTS.md package.json tsconfig.json vite.config.ts playwright.config.ts .github/workflows/ci.yml && tsc -b && node scripts/cargo.mjs fmt --all -- --check && node scripts/cargo.mjs clippy --workspace --all-targets --locked -- -D warnings"
+  },
+  "dependencies": {
+    "@fontsource-variable/jetbrains-mono": "5.3.0",
+    "@fontsource-variable/manrope": "5.3.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.13.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.1",
+    "prettier": "3.9.6",
+    "typescript": "7.0.2",
+    "vite": "8.3.0"
+  }
+}
