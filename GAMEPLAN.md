@@ -58,6 +58,6 @@ Once these are satisfied, finish and present v1 before expanding scope.
 
 ## Next move
 
-Establish the standalone project under `C:\Users\robby\Documents\Codex\Projects\walnut`, carry this plan and roadmap into its root, and build milestone 1. Start with one working command-to-disk-to-inspector path.
+The standalone project lives at `C:\Users\robby\Documents\Codex\Projects\walnut`. The foundation and atomic recovery increments are implemented locally. Next is milestone 3: carry the recovery contract into a paged B+ tree and expose its real structure in the inspector. Current evidence and remaining platform checks live in the roadmap and verification notes.
 
 **Make WALnut technologically and visually impressive.**

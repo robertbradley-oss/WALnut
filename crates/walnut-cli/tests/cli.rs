@@ -44,3 +44,67 @@ fn corrupt_file_and_bad_commands_have_structured_errors() {
         assert!(error["error"]["code"].is_string());
     }
 }
+
+#[test]
+fn actual_process_termination_at_all_commit_and_checkpoint_boundaries() {
+    let boundaries = [
+        "before_frame",
+        "after_frame",
+        "after_commit_marker",
+        "after_wal_sync",
+        "after_commit_return",
+        "before_checkpoint_write",
+        "after_checkpoint_write",
+        "after_checkpoint_sync",
+        "after_wal_truncate",
+        "after_reset_sync",
+    ];
+    let temp = tempfile::tempdir().unwrap();
+    for (index, boundary) in boundaries.into_iter().enumerate() {
+        let report = json(&run(&["lab", temp.path().to_str().unwrap(), boundary]));
+        assert_eq!(report["boundary"], boundary);
+        assert_eq!(report["process_terminated"], true);
+        assert_eq!(report["commit_returned"], index >= 4);
+        assert_eq!(
+            report["outcome"],
+            if index < 2 {
+                "batch_absent"
+            } else {
+                "batch_recovered"
+            }
+        );
+        assert_eq!(
+            report["snapshot"]["records"].as_array().unwrap().len(),
+            if index < 2 { 1 } else { 3 }
+        );
+        if index == 1 {
+            assert_eq!(report["snapshot"]["recovery"]["discarded_tail_bytes"], 4132);
+        }
+        let path = report["database_path"].as_str().unwrap();
+        let again = json(&run(&["inspect", path]));
+        assert_eq!(again["records"], report["snapshot"]["records"]);
+        json(&run(&["put", path, "continued", "yes"]));
+        json(&run(&["checkpoint", path]));
+        assert_eq!(json(&run(&["get", path, "continued"]))["value"], "yes");
+    }
+}
+
+#[test]
+fn cli_batches_increment_once_and_checkpoint_resets_wal() {
+    let temp = tempfile::tempdir().unwrap();
+    let path = temp.path().join("batch.db");
+    let path = path.to_str().unwrap();
+    json(&run(&["create", path]));
+    let batch = json(&run(&[
+        "batch",
+        path,
+        r#"[{"key":"alpha","value":"one"},{"key":"beta","value":"two"}]"#,
+    ]));
+    assert_eq!(batch["generation"], 1);
+    assert_eq!(batch["records"].as_array().unwrap().len(), 2);
+    assert_eq!(batch["checkpoint_generation"], 0);
+    let checkpoint = json(&run(&["checkpoint", path]));
+    assert_eq!(checkpoint["checkpoint_generation"], 1);
+    assert_eq!(checkpoint["wal_bytes"], 64);
+    assert_eq!(json(&run(&["get", path, "alpha"]))["value"], "one");
+}

@@ -1,10 +1,13 @@
-//! WALnut's bounded, single-page storage engine. Stage 1 supports normal reopen,
-//! not crash-atomic updates. Failed writes poison the handle until it is reopened.
+//! One logical page, atomic batches, a redo WAL, and recoverable checkpoints.
+//! See docs/recovery-contract.md for synchronization assumptions and limits.
 mod engine;
+mod files;
 mod page;
 mod storage;
+pub mod wal;
 
-pub use engine::{Engine, Event, Snapshot};
+pub use engine::{Engine, Event, Recovery, Snapshot, WriteOp};
+pub use files::{FileEngine, create_file, open_file, upgrade_file, wal_path};
 pub use page::{HEADER_SIZE, KEY_LIMIT, PAGE_SIZE, Page, Record, VALUE_LIMIT};
 pub use storage::{FileStorage, Storage};
 

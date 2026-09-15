@@ -12,6 +12,7 @@ pub trait Storage {
     fn read_exact_at(&mut self, offset: u64, bytes: &mut [u8]) -> std::io::Result<()>;
     fn write_all_at(&mut self, offset: u64, bytes: &[u8]) -> std::io::Result<()>;
     fn sync(&mut self) -> std::io::Result<()>;
+    fn truncate(&mut self, length: u64) -> std::io::Result<()>;
 }
 
 pub struct FileStorage {
@@ -59,5 +60,8 @@ impl Storage for FileStorage {
     }
     fn sync(&mut self) -> std::io::Result<()> {
         self.file.sync_all()
+    }
+    fn truncate(&mut self, length: u64) -> std::io::Result<()> {
+        self.file.set_len(length)
     }
 }

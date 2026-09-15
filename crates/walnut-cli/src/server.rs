@@ -6,7 +6,7 @@ use std::{
     path::{Path, PathBuf},
 };
 use tiny_http::{Header, Method, Request, Response, Server};
-use walnut_core::{Engine, Error, FileStorage, Result};
+use walnut_core::{Error, FileEngine, Result, WriteOp, create_file, open_file};
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -20,13 +20,29 @@ struct Get {
     key: String,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Empty {}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Batch {
+    writes: Vec<WriteOp>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Lab {
+    boundary: String,
+}
+
 struct State {
-    engine: Option<Engine<FileStorage>>,
+    engine: Option<FileEngine>,
     path: PathBuf,
 }
 
 impl State {
-    fn engine(&mut self) -> Result<&mut Engine<FileStorage>> {
+    fn engine(&mut self) -> Result<&mut FileEngine> {
         self.engine.as_mut().ok_or_else(|| {
             Error::new(
                 "needs_reopen",
@@ -41,7 +57,7 @@ impl State {
     }
     fn reopen(&mut self) -> Result<Value> {
         drop(self.engine.take());
-        self.engine = Some(Engine::open(FileStorage::open(&self.path)?, true)?);
+        self.engine = Some(open_file(&self.path, true)?);
         self.snapshot()
     }
 }
@@ -75,23 +91,21 @@ fn body<T: serde::de::DeserializeOwned>(request: &mut Request) -> Result<T> {
     if header(request, "Content-Type").as_deref() != Some("application/json") {
         return Err(Error::new("invalid_request", "Send application/json."));
     }
-    if request.body_length().is_some_and(|len| len > 8192) {
-        return Err(Error::new("invalid_request", "Request exceeds 8 KB."));
+    if request.body_length().is_some_and(|len| len > 131072) {
+        return Err(Error::new("invalid_request", "Request exceeds 128 KB."));
     }
     let mut bytes = Vec::new();
-    request.as_reader().take(8193).read_to_end(&mut bytes)?;
-    if bytes.len() > 8192 {
-        return Err(Error::new("invalid_request", "Request exceeds 8 KB."));
+    request.as_reader().take(131073).read_to_end(&mut bytes)?;
+    if bytes.len() > 131072 {
+        return Err(Error::new("invalid_request", "Request exceeds 128 KB."));
     }
     serde_json::from_slice(&bytes)
         .map_err(|_| Error::new("invalid_request", "Invalid command JSON."))
 }
 
 fn api(request: &mut Request, state: &mut State) -> Result<Value> {
-    match (
-        request.method(),
-        request.url().split('?').next().unwrap_or(""),
-    ) {
+    let route = request.url().split('?').next().unwrap_or("").to_owned();
+    match (request.method(), route.as_str()) {
         (&Method::Get, "/api/snapshot") => state.snapshot(),
         (&Method::Post, "/api/put") => {
             let input: Put = body(request)?;
@@ -108,8 +122,38 @@ fn api(request: &mut Request, state: &mut State) -> Result<Value> {
             )
         }
         (&Method::Post, "/api/reopen") => {
-            let _: serde_json::Map<String, Value> = body(request)?;
+            let _: Empty = body(request)?;
             Ok(json!({"snapshot":state.reopen()?}))
+        }
+        (&Method::Post, "/api/stage") => {
+            let input: Put = body(request)?;
+            state.engine()?.stage(&input.key, &input.value)?;
+            Ok(json!({"snapshot":state.snapshot()?}))
+        }
+        (&Method::Post, "/api/batch") => {
+            let input: Batch = body(request)?;
+            state.engine()?.batch(input.writes)?;
+            Ok(json!({"snapshot":state.snapshot()?}))
+        }
+        (&Method::Post, route @ ("/api/commit" | "/api/discard" | "/api/checkpoint")) => {
+            let _: Empty = body(request)?;
+            match route {
+                "/api/commit" => state.engine()?.commit()?,
+                "/api/discard" => state.engine()?.discard()?,
+                _ => state.engine()?.checkpoint()?,
+            }
+            Ok(json!({"snapshot":state.snapshot()?}))
+        }
+        (&Method::Post, "/api/lab") => {
+            let input: Lab = body(request)?;
+            let directory = state
+                .path
+                .parent()
+                .unwrap_or(Path::new("."))
+                .join("recovery-lab");
+            Ok(
+                json!({"lab":crate::lab::run(&directory,&input.boundary)?,"snapshot":state.snapshot()?}),
+            )
         }
         _ => Err(Error::new("not_found", "Unknown API route or method.")),
     }
@@ -190,9 +234,9 @@ pub fn serve(args: &[String]) -> Result<()> {
     let server = Server::http(("127.0.0.1", port))
         .map_err(|e| Error::new("listen_failed", e.to_string()))?;
     let engine = if path.exists() {
-        Engine::open(FileStorage::open(&path)?, true)?
+        open_file(&path, true)?
     } else {
-        Engine::create(FileStorage::create(&path)?, true)?
+        create_file(&path, true)?
     };
     let mut state = State {
         engine: Some(engine),
@@ -234,8 +278,13 @@ pub fn serve(args: &[String]) -> Result<()> {
                 Err(error) => {
                     let status = match error.code {
                         "not_found" => 404,
-                        "io" | "needs_reopen" | "corrupt_page" | "verification_failed" => 503,
-                        "database_locked" => 409,
+                        "io"
+                        | "needs_reopen"
+                        | "corrupt_page"
+                        | "corrupt_wal"
+                        | "unrecoverable_page"
+                        | "verification_failed" => 503,
+                        "database_locked" | "batch_pending" | "checkpoint_required" => 409,
                         _ => 400,
                     };
                     fail(request, status, error);

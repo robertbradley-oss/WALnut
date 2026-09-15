@@ -1,5 +1,5 @@
 use std::{cell::RefCell, io, rc::Rc};
-use walnut_core::{Engine, FileStorage, PAGE_SIZE, Page, Storage};
+use walnut_core::{Engine, FileStorage, PAGE_SIZE, Page, Storage, create_file, open_file};
 
 #[derive(Clone, Copy, Default)]
 enum Fault {
@@ -34,14 +34,15 @@ impl Storage for TestStorage {
         }
         target.copy_from_slice(&memory.bytes[at..at + target.len()]);
         if matches!(memory.fault, Fault::Mismatch) {
-            target[90] ^= 1;
+            target[0] ^= 1;
         }
         Ok(())
     }
     fn write_all_at(&mut self, offset: u64, bytes: &[u8]) -> io::Result<()> {
         let mut memory = self.0.borrow_mut();
         let at = offset as usize;
-        memory.bytes.resize(at + bytes.len(), 0);
+        let length = memory.bytes.len().max(at + bytes.len());
+        memory.bytes.resize(length, 0);
         if matches!(memory.fault, Fault::PartialWrite) {
             memory.bytes[at..at + 32].copy_from_slice(&bytes[..32]);
             return Err(io::Error::other("injected partial write"));
@@ -53,6 +54,10 @@ impl Storage for TestStorage {
         if matches!(self.0.borrow().fault, Fault::Sync) {
             return Err(io::Error::other("injected sync failure"));
         }
+        Ok(())
+    }
+    fn truncate(&mut self, length: u64) -> io::Result<()> {
+        self.0.borrow_mut().bytes.resize(length as usize, 0);
         Ok(())
     }
 }
@@ -158,7 +163,8 @@ fn structural_validation_rejects_invalid_but_checksummed_pages() {
 #[test]
 fn bounds_are_utf8_bytes_and_rejection_leaves_generation_unchanged() {
     let storage = TestStorage::default();
-    let mut engine = Engine::create(storage.clone(), true).unwrap();
+    let mut engine =
+        Engine::create(TestStorage::default(), storage.clone(), [1; 16], true).unwrap();
     engine.put(&"é".repeat(32), &"🌰".repeat(256)).unwrap();
     let before = storage.0.borrow().bytes.clone();
     for (key, value, code) in [
@@ -175,7 +181,8 @@ fn bounds_are_utf8_bytes_and_rejection_leaves_generation_unchanged() {
 #[test]
 fn full_page_rejection_preserves_previous_file_and_accepts_smaller_update() {
     let storage = TestStorage::default();
-    let mut engine = Engine::create(storage.clone(), true).unwrap();
+    let mut engine =
+        Engine::create(TestStorage::default(), storage.clone(), [1; 16], true).unwrap();
     for key in ["a", "b", "c"] {
         engine.put(key, &"x".repeat(1024)).unwrap();
     }
@@ -199,7 +206,8 @@ fn storage_failure_never_acknowledges_or_serves_stale_cache() {
         Fault::Mismatch,
     ] {
         let storage = TestStorage::default();
-        let mut engine = Engine::create(storage.clone(), true).unwrap();
+        let mut engine =
+            Engine::create(TestStorage::default(), storage.clone(), [1; 16], true).unwrap();
         engine.put("key", "old").unwrap();
         storage.0.borrow_mut().fault = fault;
         assert!(engine.put("key", "new").is_err());
@@ -215,13 +223,17 @@ fn real_file_reopen_retrieves_updates_and_clears_session_counters() {
     let path = temp.path().join("walnut.db");
     let session;
     {
-        let mut engine = Engine::create(FileStorage::create(&path).unwrap(), true).unwrap();
+        let mut engine = create_file(&path, true).unwrap();
         engine.put("greeting", "hello").unwrap();
         engine.put("greeting", "🌰 again").unwrap();
+        engine.checkpoint().unwrap();
         session = engine.snapshot().unwrap().session_id;
     }
-    assert_eq!(std::fs::metadata(&path).unwrap().len(), PAGE_SIZE as u64);
-    let mut reopened = Engine::open(FileStorage::open(&path).unwrap(), true).unwrap();
+    assert_eq!(
+        std::fs::metadata(&path).unwrap().len(),
+        (64 + PAGE_SIZE) as u64
+    );
+    let mut reopened = open_file(&path, true).unwrap();
     assert_eq!(
         reopened.get("greeting").unwrap().as_deref(),
         Some("🌰 again")
@@ -231,14 +243,14 @@ fn real_file_reopen_retrieves_updates_and_clears_session_counters() {
     assert_ne!(reopened.snapshot().unwrap().session_id, session);
     let verified_bytes = reopened.snapshot().unwrap().bytes;
     drop(reopened);
-    assert_eq!(verified_bytes, std::fs::read(&path).unwrap());
+    assert_eq!(verified_bytes, std::fs::read(&path).unwrap()[64..]);
 }
 
 #[test]
 fn a_second_owner_is_rejected_and_create_never_overwrites() {
     let temp = tempfile::tempdir().unwrap();
     let path = temp.path().join("owned.db");
-    let engine = Engine::create(FileStorage::create(&path).unwrap(), true).unwrap();
+    let engine = create_file(&path, true).unwrap();
     assert_eq!(
         FileStorage::open(&path).err().unwrap().code,
         "database_locked"
@@ -250,7 +262,13 @@ fn a_second_owner_is_rejected_and_create_never_overwrites() {
 
 #[test]
 fn event_order_is_truthful_bounded_and_optional() {
-    let mut engine = Engine::create(TestStorage::default(), true).unwrap();
+    let mut engine = Engine::create(
+        TestStorage::default(),
+        TestStorage::default(),
+        [1; 16],
+        true,
+    )
+    .unwrap();
     engine.put("a", "b").unwrap();
     let events = engine.snapshot().unwrap().events;
     assert_eq!(
@@ -261,10 +279,10 @@ fn event_order_is_truthful_bounded_and_optional() {
             .map(|e| e.kind)
             .collect::<Vec<_>>(),
         [
-            "page_verified",
-            "file_synced",
-            "page_written",
-            "write_started"
+            "transaction_committed",
+            "wal_synced",
+            "commit_marker_written",
+            "wal_frame_written"
         ]
     );
     for _ in 0..150 {
@@ -279,14 +297,26 @@ fn event_order_is_truthful_bounded_and_optional() {
             .windows(2)
             .all(|pair| pair[0].sequence + 1 == pair[1].sequence)
     );
-    let mut silent = Engine::create(TestStorage::default(), false).unwrap();
+    let mut silent = Engine::create(
+        TestStorage::default(),
+        TestStorage::default(),
+        [1; 16],
+        false,
+    )
+    .unwrap();
     silent.put("a", "b").unwrap();
     assert!(silent.snapshot().unwrap().events.is_empty());
 }
 
 #[test]
 fn generated_updates_agree_with_an_independent_linear_reference() {
-    let mut engine = Engine::create(TestStorage::default(), false).unwrap();
+    let mut engine = Engine::create(
+        TestStorage::default(),
+        TestStorage::default(),
+        [1; 16],
+        false,
+    )
+    .unwrap();
     let mut reference: Vec<(String, String)> = vec![];
     let mut seed = 71u64;
     for _ in 0..600 {

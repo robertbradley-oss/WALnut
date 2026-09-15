@@ -78,7 +78,7 @@ test("writes real bytes, reads a value, and preserves it across file reopen", as
   await page
     .getByRole("textbox", { name: "Value", exact: true })
     .fill("from the inside 🌰");
-  await page.getByRole("button", { name: "Write to page" }).click();
+  await page.getByRole("button", { name: "Commit this put" }).click();
   await expect(page.getByTestId("generation")).toHaveText("01");
   const before = await (
     await page.request.get(`${database.url}/api/snapshot`)
@@ -86,7 +86,9 @@ test("writes real bytes, reads a value, and preserves it across file reopen", as
   await expect(page.locator(".key-byte").first()).toHaveText("68");
   await page.getByRole("button", { name: "Reopen database" }).click();
   await expect(
-    page.getByText("File reopened. Page format and checksum verified."),
+    page.getByText(
+      "Database reopened. Committed state recovered and verified.",
+    ),
   ).toBeVisible();
   const after = await (
     await page.request.get(`${database.url}/api/snapshot`)
@@ -99,7 +101,12 @@ test("writes real bytes, reads a value, and preserves it across file reopen", as
   await expect(page.getByLabel("Read value")).toHaveText("from the inside 🌰");
   expect(errors).toEqual([]);
   await terminate(database.process);
-  const actual = await readFile(database.path);
+  const main = await readFile(database.path);
+  const wal = await readFile(`${database.path}.wal`);
+  expect(main.length).toBe(4160);
+  expect(Array.from(main.subarray(64))).toEqual(before.checkpoint_bytes);
+  expect(before.checkpoint_generation).toBe(0);
+  const actual = wal.subarray(64 + 32, 64 + 32 + 4096);
   expect(Array.from(actual)).toEqual(before.bytes);
   expect(
     actual
@@ -121,12 +128,12 @@ test("updates keep one record and missing lookups are explicit", async ({
   database,
 }) => {
   await page.goto(database.url);
-  await page.getByRole("button", { name: "Write to page" }).click();
+  await page.getByRole("button", { name: "Commit this put" }).click();
   await expect(page.getByTestId("generation")).toHaveText("01");
   await page
     .getByRole("textbox", { name: "Value", exact: true })
     .fill("updated");
-  await page.getByRole("button", { name: "Write to page" }).click();
+  await page.getByRole("button", { name: "Commit this put" }).click();
   await expect(page.getByTestId("generation")).toHaveText("02");
   await expect(page.getByTestId("record-count")).toHaveText("01");
   await page.getByRole("button", { name: "GET Read" }).click();
@@ -145,7 +152,7 @@ test("byte bounds and page-full errors do not change stored data", async ({
     .getByRole("textbox", { name: "Key", exact: true })
     .fill("é".repeat(33));
   await expect(
-    page.getByRole("button", { name: "Write to page" }),
+    page.getByRole("button", { name: "Commit this put" }),
   ).toBeDisabled();
   const headers = {
     "Content-Type": "application/json",
@@ -164,7 +171,7 @@ test("byte bounds and page-full errors do not change stored data", async ({
   await page
     .getByRole("textbox", { name: "Value", exact: true })
     .fill("y".repeat(1024));
-  await page.getByRole("button", { name: "Write to page" }).click();
+  await page.getByRole("button", { name: "Commit this put" }).click();
   await expect(page.getByRole("alert")).toContainText("This 4 KB page is full");
   const snapshot = await (
     await page.request.get(`${database.url}/api/snapshot`)
@@ -248,7 +255,7 @@ test("engine loss shows stale state and disables writes", async ({
   database,
 }) => {
   await page.goto(database.url);
-  await page.getByRole("button", { name: "Write to page" }).click();
+  await page.getByRole("button", { name: "Commit this put" }).click();
   await expect(page.getByTestId("record-count")).toHaveText("01");
   database.process.kill();
   await expect(page.getByRole("status")).toHaveText("Engine offline", {
@@ -256,7 +263,183 @@ test("engine loss shows stale state and disables writes", async ({
   });
   await expect(page.getByRole("alert")).toContainText("last verified snapshot");
   await expect(
-    page.getByRole("button", { name: "Write to page" }),
+    page.getByRole("button", { name: "Commit this put" }),
   ).toBeDisabled();
   await expect(page.getByTestId("record-count")).toHaveText("01");
+});
+
+test("stages two puts, hides them from reads, commits atomically, and checkpoints real bytes", async ({
+  page,
+  database,
+}) => {
+  await page.goto(database.url);
+  for (const [key, value] of [
+    ["alpha", "one"],
+    ["beta", "two"],
+  ]) {
+    await page.getByRole("textbox", { name: "Key", exact: true }).fill(key);
+    await page.getByRole("textbox", { name: "Value", exact: true }).fill(value);
+    await page.getByRole("button", { name: "Stage in batch" }).click();
+    await expect(
+      page.getByText(`Staged “${key}”. Reads still see committed data.`),
+    ).toBeVisible();
+  }
+  await expect(page.getByTestId("staged-count")).toHaveText("2");
+  await expect(page.getByTestId("record-count")).toHaveText("00");
+  await expect(
+    page.getByRole("button", { name: "Commit this put" }),
+  ).toBeDisabled();
+  await page.getByRole("button", { name: "GET Read" }).click();
+  await page.getByRole("button", { name: "Find this key" }).click();
+  await expect(page.getByText("“beta” is not in this page.")).toBeVisible();
+  await page.getByRole("button", { name: "Commit batch", exact: true }).click();
+  await expect(page.getByTestId("generation")).toHaveText("01");
+  await expect(page.getByTestId("record-count")).toHaveText("02");
+  await expect(
+    page.getByRole("textbox", { name: "Key", exact: true }),
+  ).toBeFocused();
+  await expect(page.getByTestId("staged-count")).toHaveText("0");
+  await expect(page.getByTestId("checkpoint-generation")).toHaveText("0");
+  await expect(
+    page.getByRole("button", { name: "GEN 01 2 puts COMMITTED" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Checkpoint page · gen 0" }).click();
+  await expect(
+    page
+      .getByRole("table", { name: "Encoded page bytes" })
+      .locator("tbody tr")
+      .nth(1)
+      .locator("td")
+      .first(),
+  ).toHaveText("00");
+  await page.getByRole("button", { name: "Committed page · gen 1" }).click();
+  await expect(
+    page
+      .getByRole("table", { name: "Encoded page bytes" })
+      .locator("tbody tr")
+      .nth(1)
+      .locator("td")
+      .first(),
+  ).toHaveText("01");
+  await page.getByRole("button", { name: "Checkpoint", exact: true }).click();
+  await expect(page.getByTestId("checkpoint-generation")).toHaveText("1");
+  await expect(page.getByTestId("wal-bytes")).toHaveText("64 B on disk");
+  const snapshot = await (
+    await page.request.get(`${database.url}/api/snapshot`)
+  ).json();
+  await terminate(database.process);
+  expect(Array.from((await readFile(database.path)).subarray(64))).toEqual(
+    snapshot.bytes,
+  );
+  expect((await readFile(`${database.path}.wal`)).length).toBe(64);
+});
+
+test("discard and reopen remove pending puts, while checkpoint preserves them", async ({
+  page,
+  database,
+}) => {
+  await page.goto(database.url);
+  await page.getByRole("button", { name: "Stage in batch" }).click();
+  await expect(page.getByTestId("staged-count")).toHaveText("1");
+  await page.getByRole("button", { name: "Checkpoint", exact: true }).click();
+  await expect(
+    page.getByText(
+      "Checkpoint complete. Main page synced; WAL reset and synced.",
+    ),
+  ).toBeVisible();
+  await expect(page.getByTestId("staged-count")).toHaveText("1");
+  await page.getByRole("button", { name: "Discard", exact: true }).click();
+  await expect(page.getByTestId("staged-count")).toHaveText("0");
+  await page.getByRole("button", { name: "Stage in batch" }).click();
+  await expect(page.getByTestId("staged-count")).toHaveText("1");
+  await page.getByRole("button", { name: "Reopen database" }).click();
+  await expect(page.getByTestId("staged-count")).toHaveText("0");
+  await expect(page.getByTestId("generation")).toHaveText("00");
+});
+
+test("recovery lab reports actual child exits and leaves the open database untouched", async ({
+  page,
+  database,
+}) => {
+  await page.goto(database.url);
+  await page.getByRole("button", { name: "Commit this put" }).click();
+  await expect(page.getByTestId("generation")).toHaveText("01");
+  const before = await (
+    await page.request.get(`${database.url}/api/snapshot`)
+  ).json();
+  for (const scenario of [
+    "Before commit",
+    "After commit",
+    "During checkpoint",
+    "During log reset",
+  ]) {
+    await page
+      .getByRole("group", { name: "Crash boundary" })
+      .getByRole("button", { name: scenario })
+      .click();
+    const response = page.waitForResponse(
+      (res) =>
+        res.url().endsWith("/api/lab") && res.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Run crash & recover" }).click();
+    const report = (await (await response).json()).lab;
+    expect(report.process_terminated).toBe(true);
+    expect(report.process_id).not.toBe(database.process.pid);
+    expect(report.database_path).not.toBe(database.path);
+    const absent = scenario === "Before commit";
+    expect(report.snapshot.records.map((r: { key: string }) => r.key)).toEqual(
+      absent ? ["seed"] : ["alpha", "beta", "seed"],
+    );
+    await expect(
+      page.getByRole("heading", {
+        name: absent
+          ? "No partial batch escaped."
+          : "The whole batch survived.",
+      }),
+    ).toBeVisible();
+    await expect(page.getByRole("status")).toHaveText("Engine connected");
+  }
+  const after = await (
+    await page.request.get(`${database.url}/api/snapshot`)
+  ).json();
+  expect(after.bytes).toEqual(before.bytes);
+  expect(after.wal_bytes).toBe(before.wal_bytes);
+  expect(after.session_id).toBe(before.session_id);
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+});
+
+test("batch API validates before changing state and rejects unknown lab boundaries", async ({
+  request,
+  database,
+}) => {
+  const headers = { "X-Walnut-Client": "inspector-v1" };
+  const before = await (
+    await request.get(`${database.url}/api/snapshot`)
+  ).json();
+  const bad = await request.post(`${database.url}/api/batch`, {
+    headers,
+    data: {
+      writes: [
+        { key: "valid", value: "x" },
+        { key: "", value: "bad" },
+      ],
+    },
+  });
+  expect(bad.status()).toBe(400);
+  const lab = await request.post(`${database.url}/api/lab`, {
+    headers,
+    data: { boundary: "arbitrary-command" },
+  });
+  expect(lab.status()).toBe(400);
+  const after = await (
+    await request.get(`${database.url}/api/snapshot`)
+  ).json();
+  expect(after.bytes).toEqual(before.bytes);
+  expect(after.wal_bytes).toBe(before.wal_bytes);
+  expect(after.staged).toEqual([]);
 });

@@ -1,6 +1,6 @@
 # WALnut — Build Roadmap
 
-The lasting direction is in [GAMEPLAN.md](GAMEPLAN.md). This roadmap describes the sequence and observable results. Stage 1 is implemented locally; see [its verification notes](docs/stage-1.md). Milestones represent working increments, not calendar promises.
+The lasting direction is in [GAMEPLAN.md](GAMEPLAN.md). This roadmap describes the sequence and observable results. Stages 1 and 2 are implemented locally; see [foundation verification](docs/stage-1.md) and [recovery verification](docs/stage-2.md). Stage 3 is next. Milestones represent working increments, not calendar promises.
 
 ## Astra reasoning levels
 

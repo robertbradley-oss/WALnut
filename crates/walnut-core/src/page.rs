@@ -69,15 +69,24 @@ impl Page {
     }
 
     pub fn with_put(&self, key: &str, value: &str) -> Result<Self> {
-        validate_key(key)?;
-        if value.len() > VALUE_LIMIT {
-            return Err(Error::new(
-                "invalid_value",
-                "Values may contain at most 1,024 UTF-8 bytes.",
-            ));
-        }
+        self.with_batch([(key, value)])
+    }
+
+    pub fn with_batch<'a>(
+        &self,
+        writes: impl IntoIterator<Item = (&'a str, &'a str)>,
+    ) -> Result<Self> {
         let mut next = self.clone();
-        next.entries.insert(key.into(), value.into());
+        for (key, value) in writes {
+            validate_key(key)?;
+            if value.len() > VALUE_LIMIT {
+                return Err(Error::new(
+                    "invalid_value",
+                    "Values may contain at most 1,024 UTF-8 bytes.",
+                ));
+            }
+            next.entries.insert(key.into(), value.into());
+        }
         if next.used_bytes() > PAGE_SIZE {
             return Err(Error::new(
                 "page_full",

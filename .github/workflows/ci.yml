@@ -1,4 +1,4 @@
-name: Stage 1 verification
+name: WALnut verification
 on:
   push:
   pull_request:
