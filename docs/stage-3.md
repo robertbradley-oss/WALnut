@@ -86,4 +86,4 @@ Open `http://127.0.0.1:7878`. Use a new example filename on repeated runs; creat
 - Scans return up to 256 records and resume against current committed data. There is no concurrent snapshot retention, deletion, reclamation, SQL, or multiwriter support.
 - Event retention and recent WAL displays are bounded. Coordinated timeline playback, stepping, guided stories, benchmark results, a shareable recorded demo, and the portfolio release remain later stages.
 
-Next: **Phase 4 — visual experience, Astra Extra high (`xhigh`)**. Build on the actual tree and split recovery to make the whole story clear and visually impressive. Phase 4 has not started, and this phase does not publish or deploy WALnut.
+Next: **Phase 4 — visual experience, Astra Ultra (`ultra`)**, selected by the project owner. Build on the actual tree and split recovery to make the whole story clear and visually impressive. Phase 4 has not started, and this phase does not publish or deploy WALnut.

@@ -4,14 +4,14 @@ The lasting direction is in [GAMEPLAN.md](GAMEPLAN.md). This roadmap describes t
 
 ## Astra reasoning levels
 
-Use **GPT-6 Astra** (`gpt-6-astra`). These are recommended starting settings for substantive work in each stage, based on its complexity and consequences. Recording them here does not automatically change a task's model settings.
+Use **GPT-6 Astra** (`gpt-6-astra`). Stage 4 uses the project owner's chosen **Ultra** setting. The other levels are recommended starting settings based on each stage's complexity and consequences. Recording them here does not automatically change a task's model settings.
 
 | Stage | Reasoning level | Focus |
 | --- | --- | --- |
 | 1. Foundation | Extra high (`xhigh`) | Architecture, storage boundaries, and the first complete engine/UI path. |
 | 2. Recovery | Max (`max`) | Commit ordering, interruption cases, checkpoint safety, and durability assumptions. |
 | 3. B+ tree | Max (`max`) | Structural invariants, cascading splits, and atomic changes across pages. |
-| 4. Visual experience | Extra high (`xhigh`) | Interaction design, state fidelity, coordinated motion, and failure states. |
+| 4. Visual experience | Ultra (`ultra`) | Interaction design, state fidelity, coordinated motion, and failure states. |
 | 5. Verification and performance | Max (`max`) | Fault analysis, independent test models, benchmark validity, and regression diagnosis. |
 | 6. Portfolio finish | High (`high`) | Clear presentation, reproducible setup, documentation, and release preparation. |
 
@@ -71,7 +71,7 @@ Use lower effort for routine edits when appropriate. If a later stage uncovers a
 
 ## 4. Make the whole system understandable and striking
 
-**Astra reasoning:** Extra high (`xhigh`).
+**Astra reasoning:** Ultra (`ultra`), selected by the project owner.
 
 **Build**
 
