@@ -937,7 +937,10 @@ export default function App() {
               {!!snapshot?.staged.length && (
                 <section className="staged-batch" aria-label="Staged batch">
                   <div className="staged-heading">
-                    <strong>{snapshot.staged.length} puts in memory</strong>
+                    <strong>
+                      {snapshot.staged.length}{" "}
+                      {snapshot.staged.length === 1 ? "put" : "puts"} in memory
+                    </strong>
                     <span>{snapshot.staged_used_bytes} / 4,096 B</span>
                   </div>
                   <ol>

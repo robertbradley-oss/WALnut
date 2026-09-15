@@ -34,7 +34,8 @@ export function Journal({
           <span className="state-step">01 / MEMORY</span>
           <strong>
             <span data-testid="staged-count">{snapshot.staged.length}</span>{" "}
-            staged <small>puts</small>
+            staged{" "}
+            <small>{snapshot.staged.length === 1 ? "put" : "puts"}</small>
           </strong>
           <span>Invisible to reads · lost on restart</span>
         </div>
@@ -140,9 +141,12 @@ export function Journal({
           <span>↳</span>
           <p>
             <strong>On this reopen:</strong>{" "}
-            {snapshot.recovery.replayed_transactions} transactions recovered ·{" "}
-            {snapshot.recovery.discarded_tail_bytes} incomplete tail bytes
-            removed
+            {snapshot.recovery.replayed_transactions}{" "}
+            {snapshot.recovery.replayed_transactions === 1
+              ? "transaction"
+              : "transactions"}{" "}
+            recovered · {snapshot.recovery.discarded_tail_bytes} incomplete tail
+            bytes removed
             {snapshot.recovery.repaired_page
               ? " · main page reconstructed from WAL"
               : ""}
