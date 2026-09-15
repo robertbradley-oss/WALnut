@@ -133,6 +133,22 @@ export function Journal({
           {snapshot.wal_bytes.toLocaleString()} B on disk
         </strong>
       </div>
+      {frame && (
+        <details className="split-details">
+          <summary>
+            {frame.page_ids.length} page images · root P{frame.root_page_id} ·
+            height {frame.tree_height}
+          </summary>
+          <p className="mono">
+            {frame.page_ids.map((id) => `P${id}`).join(" · ")}
+          </p>
+        </details>
+      )}
+      <p className="tree-caption">
+        WAL capacity: {(snapshot.wal_byte_limit / 1024 / 1024).toFixed(0)} MiB
+        or {snapshot.wal_limit.toLocaleString()} transactions. Checkpoint to
+        reclaim log space.
+      </p>
       {(snapshot.recovery.replayed_transactions > 0 ||
         snapshot.recovery.discarded_tail_bytes > 0 ||
         snapshot.recovery.repaired_page ||
@@ -148,7 +164,7 @@ export function Journal({
             recovered · {snapshot.recovery.discarded_tail_bytes} incomplete tail
             bytes removed
             {snapshot.recovery.repaired_page
-              ? " · main page reconstructed from WAL"
+              ? " · main tree reconstructed from WAL"
               : ""}
             {snapshot.recovery.obsolete_frames_removed
               ? ` · ${snapshot.recovery.obsolete_frames_removed} obsolete frames removed`

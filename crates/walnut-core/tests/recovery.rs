@@ -4,8 +4,9 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     rc::Rc,
 };
-use walnut_core::{
-    Engine, Page, Storage, WriteOp, create_file, open_file, upgrade_file,
+use walnut_core::Storage;
+use walnut_core::legacy::{
+    Engine, Page, WriteOp, create_file, open_file, upgrade_file,
     wal::{self, BODY_SIZE, FILE_HEADER, FRAME_SIZE, MAX_FRAMES},
     wal_path,
 };

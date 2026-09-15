@@ -7,9 +7,11 @@ import type {
   Snapshot,
   StoredRecord,
   LabResult,
+  RangeResult,
 } from "./types";
 import { Journal } from "./Journal";
 import { RecoveryLab } from "./RecoveryLab";
+import { TreeExplorer, PageContents } from "./TreeExplorer";
 import "./recovery.css";
 
 const byteLength = (value: string) => new TextEncoder().encode(value).length;
@@ -36,6 +38,12 @@ const eventLabels: Record<string, string> = {
   recovery_complete: "Recovery complete",
   commit_failed: "Commit failed",
   checkpoint_failed: "Checkpoint failed",
+  search_step: "Search visited a page",
+  range_read: "Range scan complete",
+  page_allocated: "Page allocated",
+  leaf_split: "Leaf split",
+  internal_split: "Branch split",
+  root_changed: "New root",
 };
 
 function Arrow({ reverse = false }: { reverse?: boolean }) {
@@ -61,7 +69,7 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
             "X-Walnut-Client": "inspector-v1",
           },
     body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(path === "lab" ? 15000 : 6000),
+    signal: AbortSignal.timeout(path.startsWith("lab") ? 15000 : 6000),
   });
   const text = await response.text();
   let data;
@@ -93,14 +101,16 @@ function PageMap({
     <div className="page-map">
       <div className="map-label">
         <span>
-          <span className="tiny-square" /> PAGE 0000
+          <span className="tiny-square" /> PAGE{" "}
+          {String(snapshot.page_id).padStart(4, "0")} ·{" "}
+          {snapshot.page_kind.toUpperCase()}
         </span>
         <span>{snapshot.page_size.toLocaleString()} BYTES</span>
       </div>
       <svg
         viewBox="0 0 680 188"
         role="img"
-        aria-label={`Page 0: ${snapshot.used_bytes} of 4096 bytes used`}
+        aria-label={`Page ${snapshot.page_id}: ${snapshot.used_bytes} of 4096 bytes used`}
       >
         <defs>
           <pattern
@@ -128,6 +138,17 @@ function PageMap({
           height={height}
           fill="#8d9fac"
         />
+        {snapshot.page_kind === "internal" && (
+          <rect
+            x={x + (snapshot.header_size / 4096) * width}
+            y={y}
+            width={
+              ((snapshot.used_bytes - snapshot.header_size) / 4096) * width
+            }
+            height={height}
+            fill="var(--accent-dim)"
+          />
+        )}
         {snapshot.records.map((record, index) => (
           <rect
             key={record.key}
@@ -202,16 +223,17 @@ function PageMap({
           fill="var(--quiet)"
           fontSize="10"
         >
-          ONE PAGE · FORMAT V1
+          PAGE FORMAT V2
         </text>
       </svg>
       <div className="map-legend">
         <span>
-          <i className="header-dot" /> Header <b>32 B</b>
+          <i className="header-dot" /> Header <b>{snapshot.header_size} B</b>
         </span>
         <span>
-          <i className="record-dot" /> Records{" "}
-          <b>{snapshot.used_bytes - 32} B</b>
+          <i className="record-dot" />{" "}
+          {snapshot.page_kind === "internal" ? "Routing" : "Records"}{" "}
+          <b>{snapshot.used_bytes - snapshot.header_size} B</b>
         </span>
         <span>
           <i className="free-dot" /> Free <b>{4096 - snapshot.used_bytes} B</b>
@@ -239,9 +261,9 @@ function ByteInspector({
       : snapshot.bytes;
   useEffect(() => {
     setWindowStart(selected ? Math.floor(selected.offset / 256) * 256 : 0);
-  }, [selected?.key, selected?.offset]);
+  }, [selected?.key, selected?.offset, snapshot.page_id]);
   const group = (offset: number) => {
-    if (offset < 32) return "header-byte";
+    if (offset < snapshot.header_size) return "header-byte";
     if (
       source === "committed" &&
       selected &&
@@ -264,14 +286,14 @@ function ByteInspector({
       <p className="section-note">
         {source === "committed"
           ? "Verified committed page image. Select a record to locate its key and value."
-          : "Verified main-file page at its last checkpoint. Page offsets begin after the 64-byte file header."}
+          : `Verified main-file page at its last checkpoint. File offset: ${(64 + snapshot.page_id * 4096).toLocaleString()} bytes.`}
       </p>
       <div className="byte-source" role="group" aria-label="Page byte source">
         <button
           aria-pressed={source === "committed"}
           onClick={() => setSource("committed")}
         >
-          Committed page · gen {snapshot.generation}
+          Committed page · gen {snapshot.page_generation}
         </button>
         <button
           aria-pressed={source === "checkpoint"}
@@ -279,8 +301,8 @@ function ByteInspector({
           onClick={() => setSource("checkpoint")}
         >
           Checkpoint page ·{" "}
-          {snapshot.checkpoint_generation === null
-            ? "invalid"
+          {snapshot.checkpoint_bytes === null
+            ? "unavailable"
             : `gen ${snapshot.checkpoint_generation}`}
         </button>
       </div>
@@ -403,7 +425,11 @@ function EventLog({ events }: { events: EngineEvent[] }) {
                   <span className="event-dot" />
                   <span className="event-text">
                     <strong>{eventLabels[event.kind] || event.kind}</strong>
-                    <small>{event.key ?? "page 0000"}</small>
+                    <small>
+                      {event.page_id === null
+                        ? (event.key ?? "transaction")
+                        : `Page ${event.page_id}${event.related_page === null ? "" : ` → ${event.related_page}`}`}
+                    </small>
                   </span>
                   <span className="event-number">
                     {String(event.sequence).padStart(3, "0")}
@@ -436,10 +462,15 @@ export default function App() {
   const [connectionError, setConnectionError] = useState("");
   const [commandError, setCommandError] = useState("");
   const [notice, setNotice] = useState("");
-  const [operation, setOperation] = useState<"put" | "get">("put");
+  const [operation, setOperation] = useState<"put" | "get" | "range">("put");
   const [key, setKey] = useState("hello");
   const [value, setValue] = useState("from the inside");
   const [selectedKey, setSelectedKey] = useState<string>();
+  const [selectedPage, setSelectedPage] = useState(1);
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
+  const [rangeLimit, setRangeLimit] = useState(32);
+  const [rangeResult, setRangeResult] = useState<RangeResult | null>(null);
   const [result, setResult] = useState<CommandResult | null>(null);
   const [labResult, setLabResult] = useState<LabResult | null>(null);
   const [labRunning, setLabRunning] = useState(false);
@@ -448,13 +479,13 @@ export default function App() {
 
   const accept = useCallback((next: Snapshot) => {
     if (
-      next.schema_version !== 2 ||
-      next.storage_format_version !== 2 ||
-      next.format_version !== 1 ||
+      next.schema_version !== 3 ||
+      next.storage_format_version !== 3 ||
+      next.format_version !== 2 ||
       next.bytes.length !== 4096
     )
       throw new Error(
-        "This inspector needs storage and event version 2 with page format 1.",
+        "This inspector needs storage and event version 3 with page format 2.",
       );
     if (
       !Number.isSafeInteger(next.generation) ||
@@ -473,7 +504,7 @@ export default function App() {
     if (busyRef.current) return;
     const id = ++requestId.current;
     try {
-      const next = await request<Snapshot>("snapshot");
+      const next = await request<Snapshot>(`snapshot?page=${selectedPage}`);
       if (requestId.current === id) accept(next);
     } catch (error) {
       if (requestId.current === id) {
@@ -483,7 +514,7 @@ export default function App() {
         );
       }
     }
-  }, [accept]);
+  }, [accept, selectedPage]);
   useEffect(() => {
     void refresh();
     const interval = setInterval(() => void refresh(), 1500);
@@ -492,6 +523,12 @@ export default function App() {
       requestId.current++;
     };
   }, [refresh]);
+
+  function selectPage(id: number, key?: string) {
+    ++requestId.current;
+    setSelectedKey(key);
+    setSelectedPage(id);
+  }
 
   async function execute(
     kind:
@@ -502,8 +539,12 @@ export default function App() {
       | "commit"
       | "discard"
       | "checkpoint"
-      | "lab",
+      | "lab"
+      | "range"
+      | "grow",
     boundary?: string,
+    scenario?: string,
+    cursor?: string,
   ) {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -519,36 +560,54 @@ export default function App() {
     }
     try {
       const next = await request<CommandResponse>(
-        kind,
+        `${kind}?page=${selectedPage}`,
         kind === "lab"
-          ? { boundary }
-          : kind === "get"
-            ? { key }
-            : ["put", "stage"].includes(kind)
-              ? { key, value }
-              : {},
+          ? { boundary, scenario }
+          : kind === "range"
+            ? {
+                start: cursor ?? rangeStart,
+                end: rangeEnd || null,
+                limit: rangeLimit,
+              }
+            : kind === "get"
+              ? { key }
+              : ["put", "stage"].includes(kind)
+                ? { key, value }
+                : {},
       );
       accept(next.snapshot);
+      if (kind === "grow") selectPage(next.snapshot.root_page_id);
+      if (next.range) {
+        setRangeResult(next.range);
+        setNotice(`Scanned ${next.range.records.length} records in key order.`);
+        if (cursor !== undefined) setRangeStart(cursor);
+      } else if (["put", "commit", "grow", "reopen"].includes(kind))
+        setRangeResult(null);
       if (next.lab) setLabResult(next.lab);
       if (next.result) {
         setResult(next.result);
-        if (next.result.found) setSelectedKey(next.result.key);
+        if (next.result.found || kind === "get")
+          selectPage(
+            next.snapshot.last_search_path.at(-1) ?? selectedPage,
+            next.result.found ? next.result.key : undefined,
+          );
         setNotice(
           kind === "put"
             ? `Committed “${key}”. WAL synced and read-back verified.`
             : next.result.found
               ? `Found “${key}”.`
-              : `“${key}” is not in this page.`,
+              : `“${key}” is not in this tree.`,
         );
-      } else {
+      } else if (!next.range) {
         const notices: Record<string, string> = {
           reopen: "Database reopened. Committed state recovered and verified.",
           stage: `Staged “${key}”. Reads still see committed data.`,
           commit: "Batch committed. All puts are visible together.",
           discard: "Staged batch discarded. Committed data is unchanged.",
           checkpoint:
-            "Checkpoint complete. Main page synced; WAL reset and synced.",
+            "Checkpoint complete. Main pages synced; WAL reset and synced.",
           lab: "Recovery lab complete. Inspect the receipt below.",
+          grow: "Committed 64 sample records. Inspect the new pages and split events.",
         };
         setNotice(notices[kind] || "Done.");
       }
@@ -576,6 +635,13 @@ export default function App() {
   );
   const invalidKey = byteLength(key) === 0 || byteLength(key) > 64;
   const invalidValue = operation === "put" && byteLength(value) > 1024;
+  const invalidRange =
+    byteLength(rangeStart) > 64 ||
+    byteLength(rangeEnd) > 64 ||
+    !Number.isInteger(rangeLimit) ||
+    rangeLimit < 1 ||
+    rangeLimit > 256;
+  const currentPage = snapshot?.pages.find((p) => p.id === snapshot.page_id);
 
   return (
     <div className="app-shell">
@@ -588,7 +654,7 @@ export default function App() {
           </span>
         </a>
         <div className="topbar-center">
-          <span className="stage-number">02</span> COMMIT & RECOVERY
+          <span className="stage-number">03</span> THE B+ TREE
         </div>
         <span
           className={`connection ${connected ? "online" : ""}`}
@@ -608,7 +674,7 @@ export default function App() {
               <span>Nothing hidden.</span>
             </h1>
             <p className="intro-copy">
-              Commit a little data. Kill the process. Bring it back.
+              Grow a tree. Follow a key. Break a commit.
               <br />A real storage engine, with the lid off.
             </p>
           </div>
@@ -624,7 +690,7 @@ export default function App() {
               <small>
                 <i /> Local file <span>·</span>{" "}
                 {snapshot
-                  ? `4,160 B + ${snapshot.wal_bytes.toLocaleString()} B WAL`
+                  ? `${snapshot.database_bytes.toLocaleString()} B + ${snapshot.wal_bytes.toLocaleString()} B WAL`
                   : "Waiting for engine"}
               </small>
             </div>
@@ -658,11 +724,19 @@ export default function App() {
             <h2>Inside the engine</h2>
           </div>
           <span className="muted">
-            One page. Two files. Every commit accounted for.
+            Linked leaves. Atomic splits. Every byte accounted for.
           </span>
         </div>
         <div className={`workspace ${!connected ? "is-offline" : ""}`}>
           <div className="primary-column">
+            {snapshot && (
+              <TreeExplorer
+                snapshot={snapshot}
+                select={selectPage}
+                grow={() => void execute("grow")}
+                disabled={busy || !connected}
+              />
+            )}
             {snapshot && (
               <Journal
                 snapshot={snapshot}
@@ -672,7 +746,27 @@ export default function App() {
             )}
             <div className="engine-panel">
               <div className="panel-topline">
-                <span className="mono">PAGE EXPLORER</span>
+                <div className="page-select">
+                  <label className="mono" htmlFor="page-select">
+                    PAGE EXPLORER
+                  </label>
+                  {snapshot && (
+                    <select
+                      id="page-select"
+                      value={selectedPage}
+                      disabled={busy || !connected}
+                      onChange={(e) => selectPage(Number(e.target.value))}
+                    >
+                      <option value={0}>P000 · metadata</option>
+                      {snapshot.pages.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          P{String(p.id).padStart(3, "0")} · {p.kind}
+                          {p.id === snapshot.root_page_id ? " · root" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
                 <div className="checksum">
                   <i />
                   {snapshot
@@ -684,9 +778,20 @@ export default function App() {
                 <>
                   <div className="stats">
                     <div>
-                      <span>Records</span>
-                      <strong data-testid="record-count">
-                        {snapshot.records.length.toString().padStart(2, "0")}
+                      <span>
+                        {snapshot.page_kind === "internal"
+                          ? "Separators"
+                          : snapshot.page_kind === "metadata"
+                            ? "Metadata page"
+                            : "Page records"}
+                      </span>
+                      <strong>
+                        {(snapshot.page_kind === "metadata"
+                          ? 0
+                          : (currentPage?.count ?? 0)
+                        )
+                          .toString()
+                          .padStart(2, "0")}
                       </strong>
                     </div>
                     <div>
@@ -714,80 +819,99 @@ export default function App() {
                     selected={selected}
                     onSelect={setSelectedKey}
                   />
-                  <section
-                    className="records-section"
-                    aria-labelledby="records-heading"
-                  >
-                    <div className="section-heading">
-                      <h2 id="records-heading">
-                        Stored records <span>{snapshot.records.length}</span>
-                      </h2>
-                      <span className="muted">Ordered by key</span>
-                    </div>
-                    {snapshot.records.length ? (
-                      <div className="records-scroll">
-                        <table className="records-table">
-                          <thead>
-                            <tr>
-                              <th>KEY</th>
-                              <th>VALUE</th>
-                              <th>BYTES</th>
-                              <th>OFFSET</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {snapshot.records.map((record) => (
-                              <tr
-                                key={record.key}
-                                className={
-                                  selectedKey === record.key
-                                    ? "selected-row"
-                                    : ""
-                                }
-                              >
-                                <td>
-                                  <button
-                                    className="record-key"
-                                    aria-pressed={selectedKey === record.key}
-                                    onClick={() => setSelectedKey(record.key)}
-                                  >
-                                    <span className="record-icon">⌑</span>
-                                    {record.key}
-                                  </button>
-                                </td>
-                                <td title={record.value}>
-                                  {record.value === "" ? (
-                                    <em>empty string</em>
-                                  ) : (
-                                    record.value
-                                  )}
-                                </td>
-                                <td>{record.length}</td>
-                                <td>{hex(record.offset, 4)}</td>
+                  {snapshot.page_kind !== "leaf" ? (
+                    <PageContents snapshot={snapshot} select={selectPage} />
+                  ) : (
+                    <section
+                      className="records-section"
+                      aria-labelledby="records-heading"
+                    >
+                      <div className="section-heading">
+                        <h2 id="records-heading">
+                          Stored records <span>{snapshot.records.length}</span>
+                        </h2>
+                        <span className="muted">Ordered by key</span>
+                      </div>
+                      {snapshot.records.length ? (
+                        <div className="records-scroll">
+                          <table className="records-table">
+                            <thead>
+                              <tr>
+                                <th>KEY</th>
+                                <th>VALUE</th>
+                                <th>BYTES</th>
+                                <th>OFFSET</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <div className="empty-records">
-                        <span className="empty-icon">{"{ }"}</span>
-                        <div>
-                          <strong>An empty page is a good beginning.</strong>
-                          <p>
-                            Run your first write to give these bytes a little
-                            meaning.
-                          </p>
+                            </thead>
+                            <tbody>
+                              {snapshot.records.map((record) => (
+                                <tr
+                                  key={record.key}
+                                  className={
+                                    selectedKey === record.key
+                                      ? "selected-row"
+                                      : ""
+                                  }
+                                >
+                                  <td>
+                                    <button
+                                      className="record-key"
+                                      aria-pressed={selectedKey === record.key}
+                                      onClick={() => setSelectedKey(record.key)}
+                                    >
+                                      <span className="record-icon">⌑</span>
+                                      {record.key}
+                                    </button>
+                                  </td>
+                                  <td title={record.value}>
+                                    {record.value === "" ? (
+                                      <em>empty string</em>
+                                    ) : (
+                                      record.value
+                                    )}
+                                  </td>
+                                  <td>{record.length}</td>
+                                  <td>{hex(record.offset, 4)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
+                      ) : (
+                        <div className="empty-records">
+                          <span className="empty-icon">{"{ }"}</span>
+                          <div>
+                            <strong>An empty page is a good beginning.</strong>
+                            <p>
+                              Run your first write to give these bytes a little
+                              meaning.
+                            </p>
+                          </div>
+                          <button
+                            className="text-button"
+                            onClick={() => keyInput.current?.focus()}
+                          >
+                            Write a record <Arrow />
+                          </button>
+                        </div>
+                      )}
+                    </section>
+                  )}
+                  {snapshot.page_kind === "leaf" && (
+                    <div className="leaf-link">
+                      <span>LEAF CHAIN</span>
+                      {currentPage?.next_leaf ? (
                         <button
-                          className="text-button"
-                          onClick={() => keyInput.current?.focus()}
+                          onClick={() => selectPage(currentPage.next_leaf!)}
+                          disabled={busy || !connected}
                         >
-                          Write a record <Arrow />
+                          Next leaf P{currentPage.next_leaf} →
                         </button>
-                      </div>
-                    )}
-                  </section>
+                      ) : (
+                        <span>End of chain</span>
+                      )}
+                    </div>
+                  )}
                   {selected && (
                     <div className="selection-detail">
                       <span>
@@ -847,30 +971,84 @@ export default function App() {
                 >
                   GET <span>Read</span>
                 </button>
+                <button
+                  aria-pressed={operation === "range"}
+                  onClick={() => {
+                    setOperation("range");
+                    setResult(null);
+                    setNotice("");
+                  }}
+                >
+                  SCAN <span>Range</span>
+                </button>
               </div>
               <form onSubmit={submit}>
-                <label htmlFor="record-key">
-                  Key{" "}
-                  <span
-                    aria-hidden="true"
-                    className={invalidKey && key.length ? "invalid-count" : ""}
-                  >
-                    {byteLength(key)} / 64 B
-                  </span>
-                </label>
-                <input
-                  ref={keyInput}
-                  id="record-key"
-                  autoComplete="off"
-                  spellCheck={false}
-                  value={key}
-                  onChange={(event) => setKey(event.target.value)}
-                  aria-invalid={invalidKey && key.length > 0}
-                  aria-describedby="key-limit"
-                />
-                <span className="sr-only" id="key-limit">
-                  1 to 64 UTF-8 bytes.
-                </span>
+                {operation === "range" ? (
+                  <>
+                    <label htmlFor="range-start">
+                      Start key <span>INCLUSIVE</span>
+                    </label>
+                    <input
+                      id="range-start"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={rangeStart}
+                      onChange={(e) => setRangeStart(e.target.value)}
+                    />
+                    <label htmlFor="range-end">
+                      End key <span>EXCLUSIVE</span>
+                    </label>
+                    <input
+                      id="range-end"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={rangeEnd}
+                      onChange={(e) => setRangeEnd(e.target.value)}
+                    />
+                    <label htmlFor="range-limit">
+                      Result limit <span>1–256</span>
+                    </label>
+                    <input
+                      id="range-limit"
+                      type="number"
+                      min={1}
+                      max={256}
+                      value={rangeLimit}
+                      onChange={(e) => setRangeLimit(e.target.valueAsNumber)}
+                    />
+                    <p className="range-hint">
+                      Leave bounds empty to scan all keys. Results follow the
+                      leaf links in UTF-8 byte order.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor="record-key">
+                      Key{" "}
+                      <span
+                        aria-hidden="true"
+                        className={
+                          invalidKey && key.length ? "invalid-count" : ""
+                        }
+                      >
+                        {byteLength(key)} / 64 B
+                      </span>
+                    </label>
+                    <input
+                      ref={keyInput}
+                      id="record-key"
+                      autoComplete="off"
+                      spellCheck={false}
+                      value={key}
+                      onChange={(event) => setKey(event.target.value)}
+                      aria-invalid={invalidKey && key.length > 0}
+                      aria-describedby="key-limit"
+                    />
+                    <span className="sr-only" id="key-limit">
+                      1 to 64 UTF-8 bytes.
+                    </span>
+                  </>
+                )}
                 {operation === "put" && (
                   <>
                     <label htmlFor="record-value">
@@ -892,8 +1070,7 @@ export default function App() {
                       rows={3}
                     />
                     <span className="sr-only" id="value-limit">
-                      At most 1,024 UTF-8 bytes, subject to remaining page
-                      space.
+                      At most 1,024 UTF-8 bytes. Full pages split automatically.
                     </span>
                   </>
                 )}
@@ -902,7 +1079,7 @@ export default function App() {
                   disabled={
                     busy ||
                     !connected ||
-                    invalidKey ||
+                    (operation === "range" ? invalidRange : invalidKey) ||
                     invalidValue ||
                     (operation === "put" && !!snapshot?.staged.length)
                   }
@@ -913,7 +1090,9 @@ export default function App() {
                       ? "Working…"
                       : operation === "put"
                         ? "Commit this put"
-                        : "Find this key"}
+                        : operation === "get"
+                          ? "Find this key"
+                          : "Scan this range"}
                   </span>
                   <Arrow />
                 </button>
@@ -941,7 +1120,7 @@ export default function App() {
                       {snapshot.staged.length}{" "}
                       {snapshot.staged.length === 1 ? "put" : "puts"} in memory
                     </strong>
-                    <span>{snapshot.staged_used_bytes} / 4,096 B</span>
+                    <span>{snapshot.staged_page_count} candidate pages</span>
                   </div>
                   <ol>
                     {snapshot.staged.map((op, index) => (
@@ -985,6 +1164,42 @@ export default function App() {
                   </output>
                 )}
               </div>
+              {operation === "range" && rangeResult && (
+                <section className="scan-results" aria-label="Range results">
+                  <h3>{rangeResult.records.length} records · ordered by key</h3>
+                  <ol>
+                    {rangeResult.records.map((record) => (
+                      <li key={record.key}>
+                        <button
+                          onClick={() => selectPage(record.page_id, record.key)}
+                          disabled={busy || !connected}
+                        >
+                          {record.key} <span>· P{record.page_id} ↗</span>
+                        </button>
+                        <code title={record.value}>
+                          {record.value || "(empty string)"}
+                        </code>
+                      </li>
+                    ))}
+                  </ol>
+                  {rangeResult.next_key && (
+                    <button
+                      className="secondary"
+                      disabled={busy || !connected}
+                      onClick={() =>
+                        void execute(
+                          "range",
+                          undefined,
+                          undefined,
+                          rangeResult.next_key!,
+                        )
+                      }
+                    >
+                      Next {rangeLimit} records →
+                    </button>
+                  )}
+                </section>
+              )}
               <div className="reopen-row">
                 <div>
                   <strong>Still there?</strong>
@@ -1010,9 +1225,9 @@ export default function App() {
             <div className="foundation-note">
               <span className="note-mark">i</span>
               <p>
-                <strong>One page. Atomic batches.</strong>Reads show committed
-                data. A checkpoint moves it from the log to the main file. Page
-                splits come next.
+                <strong>One tree. Atomic batches.</strong>Records live in linked
+                leaves. Branch pages route searches. Every split commits its
+                pages and root metadata together.
               </p>
             </div>
           </aside>
@@ -1022,7 +1237,7 @@ export default function App() {
           error={labError}
           disabled={busy || !connected}
           running={labRunning}
-          run={(boundary) => void execute("lab", boundary)}
+          run={(boundary, scenario) => void execute("lab", boundary, scenario)}
         />
       </main>
       <footer>

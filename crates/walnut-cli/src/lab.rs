@@ -10,25 +10,35 @@ use walnut_core::{Error, Result, create_file, open_file};
 
 pub const BOUNDARIES: &[&str] = &[
     "before_frame",
+    "after_wal_header",
+    "after_wal_page:0",
     "after_frame",
     "after_commit_marker",
     "after_wal_sync",
     "after_commit_return",
     "before_checkpoint_write",
+    "after_checkpoint_page:3",
     "after_checkpoint_write",
     "after_checkpoint_sync",
     "after_wal_truncate",
     "after_reset_sync",
 ];
 
-fn validate(boundary: &str) -> Result<()> {
+fn validate(boundary: &str, scenario: &str) -> Result<usize> {
     if !BOUNDARIES.contains(&boundary) {
         return Err(Error::new(
             "invalid_boundary",
             "Unknown recovery-lab boundary.",
         ));
     }
-    Ok(())
+    match scenario {
+        "leaf_split" => Ok(3),
+        "root_split" => Ok(116),
+        _ => Err(Error::new(
+            "invalid_scenario",
+            "Choose leaf_split or root_split.",
+        )),
+    }
 }
 fn pause(boundary: &str) {
     println!("WALNUT_PAUSED:{boundary}");
@@ -40,8 +50,8 @@ fn pause(boundary: &str) {
     std::process::exit(2);
 }
 
-pub fn worker(path: &Path, boundary: &str) -> Result<()> {
-    validate(boundary)?;
+pub fn worker(path: &Path, boundary: &str, scenario: &str) -> Result<()> {
+    let count = validate(boundary, scenario)?;
     let mut engine = open_file(path, true)?;
     let selected = boundary.to_owned();
     engine.set_boundary_hook(move |name| {
@@ -49,9 +59,7 @@ pub fn worker(path: &Path, boundary: &str) -> Result<()> {
             pause(name);
         }
     });
-    engine.stage("alpha", "one")?;
-    engine.stage("beta", "two")?;
-    engine.commit()?;
+    engine.batch(crate::workload::split_writes(count, 2))?;
     if boundary == "after_commit_return" {
         pause(boundary);
     }
@@ -62,8 +70,8 @@ pub fn worker(path: &Path, boundary: &str) -> Result<()> {
     ))
 }
 
-pub fn run(directory: &Path, boundary: &str) -> Result<Value> {
-    validate(boundary)?;
+pub fn run(directory: &Path, boundary: &str, scenario: &str) -> Result<Value> {
+    let count = validate(boundary, scenario)?;
     std::fs::create_dir_all(directory)?;
     let run_id = format!(
         "{}-{}",
@@ -76,11 +84,16 @@ pub fn run(directory: &Path, boundary: &str) -> Result<Value> {
     let run_dir = directory.join(&run_id);
     std::fs::create_dir(&run_dir)?;
     let path = run_dir.join("scenario.db");
-    {
+    let baseline = {
         let mut seed = create_file(&path, true)?;
-        seed.put("seed", "kept")?;
+        for writes in crate::workload::split_writes(0, count).chunks(64) {
+            seed.batch(writes.to_vec())?;
+        }
         seed.checkpoint()?;
-    }
+        let state = seed.snapshot()?;
+        json!({"record_count":state.record_count,"page_count":state.page_count,
+            "tree_height":state.tree_height,"root_page_id":state.root_page_id,"generation":state.generation})
+    };
     let mut command = Command::new(std::env::current_exe()?);
     command
         .args([
@@ -88,6 +101,7 @@ pub fn run(directory: &Path, boundary: &str) -> Result<Value> {
             path.to_str()
                 .ok_or_else(|| Error::new("invalid_path", "Lab path must be UTF-8."))?,
             boundary,
+            scenario,
         ])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -124,39 +138,43 @@ pub fn run(directory: &Path, boundary: &str) -> Result<Value> {
             "The worker exited without confirming the requested pause point.",
         ));
     }
-    let engine = open_file(&path, true)?;
-    let snapshot = engine.snapshot()?;
-    let alpha = snapshot
-        .records
-        .iter()
-        .find(|r| r.key == "alpha")
-        .map(|r| r.value.as_str());
-    let beta = snapshot
-        .records
-        .iter()
-        .find(|r| r.key == "beta")
-        .map(|r| r.value.as_str());
-    let seed = snapshot
-        .records
-        .iter()
-        .find(|r| r.key == "seed")
-        .map(|r| r.value.as_str());
-    let outcome = match (alpha, beta, seed) {
-        (None, None, Some("kept")) => "batch_absent",
-        (Some("one"), Some("two"), Some("kept")) => "batch_recovered",
+    let mut engine = open_file(&path, true)?;
+    let records = engine.range("", None, 256)?.records;
+    let outcome = match records.len() {
+        n if n == count => "batch_absent",
+        n if n == count + 2 => "batch_recovered",
         _ => "invariant_failed",
     };
-    if outcome == "invariant_failed" {
+    let expected = crate::workload::split_writes(0, records.len());
+    if outcome == "invariant_failed"
+        || records
+            .iter()
+            .zip(&expected)
+            .any(|(actual, want)| actual.key != want.key || actual.value != want.value)
+    {
         return Err(Error::new(
             "lab_invariant_failed",
             "The recovered records violate batch atomicity or lost the baseline.",
         ));
     }
-    let mut snapshot = serde_json::to_value(snapshot).unwrap();
+    let attempted: Vec<Value> = crate::workload::split_writes(count, 2).iter().map(|write| {
+        let record = records.iter().find(|r| r.key == write.key);
+        json!({"key":write.key,"found":record.is_some(),"value_bytes":record.map(|r|r.value.len()),"page_id":record.map(|r|r.page_id)})
+    }).collect();
+    let state = engine.snapshot()?;
+    let expected_height = if scenario == "root_split" { 3 } else { 2 };
+    if state.tree_height != expected_height - u32::from(outcome == "batch_absent") {
+        return Err(Error::new(
+            "lab_invariant_failed",
+            "The recovered tree has an unexpected height.",
+        ));
+    }
+    let mut snapshot = serde_json::to_value(state).unwrap();
     snapshot["database_name"] = json!("scenario.db");
     Ok(
-        json!({"run_id":run_id,"boundary":boundary,"process_id":pid,"process_terminated":true,
+        json!({"run_id":run_id,"scenario":scenario,"boundary":boundary,"process_id":pid,"process_terminated":true,
         "process_exit":status.to_string(),"outcome":outcome,"database_path":path,"snapshot":snapshot,
-        "failure_model":"process_termination","commit_returned":BOUNDARIES.iter().position(|b| *b == boundary).unwrap() >= 4}),
+        "baseline":baseline,"attempted":attempted,"verified_records":records.len(),
+        "failure_model":"process_termination","commit_returned":BOUNDARIES.iter().position(|b| *b == boundary).unwrap() >= BOUNDARIES.iter().position(|b| *b == "after_commit_return").unwrap()}),
     )
 }

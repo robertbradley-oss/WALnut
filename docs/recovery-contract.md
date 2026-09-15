@@ -1,5 +1,7 @@
 # Phase 2: commit and recovery contract
 
+Historical single-page contract. The failure model below also applies to phase 3; use the [tree contract](tree-contract.md) for current multi-page behavior and [storage-format-2.md](storage-format-2.md) for these legacy bytes.
+
 ## Observable guarantees
 
 One owner serializes operations on one logical 4 KB page. A batch contains 1–64 puts and advances the generation once. Validation happens before I/O; duplicate keys within a batch use the last value. Staged changes exist only in memory. Reads and the main inspector show committed data until commit succeeds.

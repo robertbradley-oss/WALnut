@@ -1,5 +1,6 @@
 use std::{cell::RefCell, io, rc::Rc};
-use walnut_core::{Engine, FileStorage, PAGE_SIZE, Page, Storage, create_file, open_file};
+use walnut_core::legacy::{Engine, PAGE_SIZE, Page, create_file, open_file};
+use walnut_core::{FileStorage, Storage};
 
 #[derive(Clone, Copy, Default)]
 enum Fault {

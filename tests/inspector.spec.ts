@@ -103,10 +103,10 @@ test("writes real bytes, reads a value, and preserves it across file reopen", as
   await terminate(database.process);
   const main = await readFile(database.path);
   const wal = await readFile(`${database.path}.wal`);
-  expect(main.length).toBe(4160);
-  expect(Array.from(main.subarray(64))).toEqual(before.checkpoint_bytes);
+  expect(main.length).toBe(8256);
+  expect(Array.from(main.subarray(64 + 4096))).toEqual(before.checkpoint_bytes);
   expect(before.checkpoint_generation).toBe(0);
-  const actual = wal.subarray(64 + 32, 64 + 32 + 4096);
+  const actual = wal.subarray(64 + 64 + 4096, 64 + 64 + 8192);
   expect(Array.from(actual)).toEqual(before.bytes);
   expect(
     actual
@@ -139,11 +139,11 @@ test("updates keep one record and missing lookups are explicit", async ({
   await page.getByRole("button", { name: "GET Read" }).click();
   await page.getByRole("textbox", { name: "Key", exact: true }).fill("missing");
   await page.getByRole("button", { name: "Find this key" }).click();
-  await expect(page.getByText("“missing” is not in this page.")).toBeVisible();
+  await expect(page.getByText("“missing” is not in this tree.")).toBeVisible();
   await expect(page.getByLabel("Read value")).toHaveCount(0);
 });
 
-test("byte bounds and page-full errors do not change stored data", async ({
+test("byte bounds hold while a physically full leaf splits", async ({
   page,
   database,
 }) => {
@@ -172,12 +172,24 @@ test("byte bounds and page-full errors do not change stored data", async ({
     .getByRole("textbox", { name: "Value", exact: true })
     .fill("y".repeat(1024));
   await page.getByRole("button", { name: "Commit this put" }).click();
-  await expect(page.getByRole("alert")).toContainText("This 4 KB page is full");
+  await expect(page.getByTestId("record-count")).toHaveText("04");
+  await expect(page.getByTestId("tree-height")).toHaveText("2 levels");
   const snapshot = await (
     await page.request.get(`${database.url}/api/snapshot`)
   ).json();
-  expect(snapshot.generation).toBe(3);
-  expect(snapshot.records).toHaveLength(3);
+  expect(snapshot.generation).toBe(4);
+  expect(snapshot.record_count).toBe(4);
+  expect(snapshot.page_count).toBe(3);
+  expect(snapshot.splits).toHaveLength(1);
+  const invalid = await page.request.post(`${database.url}/api/put`, {
+    headers,
+    data: { key: "oversized", value: "x".repeat(1025) },
+  });
+  expect(invalid.status()).toBe(400);
+  expect(
+    (await (await page.request.get(`${database.url}/api/snapshot`)).json())
+      .generation,
+  ).toBe(4);
 });
 
 test("local API rejects cross-origin writes and malformed commands", async ({
@@ -291,7 +303,7 @@ test("stages two puts, hides them from reads, commits atomically, and checkpoint
   ).toBeDisabled();
   await page.getByRole("button", { name: "GET Read" }).click();
   await page.getByRole("button", { name: "Find this key" }).click();
-  await expect(page.getByText("“beta” is not in this page.")).toBeVisible();
+  await expect(page.getByText("“beta” is not in this tree.")).toBeVisible();
   await page.getByRole("button", { name: "Commit batch", exact: true }).click();
   await expect(page.getByTestId("generation")).toHaveText("01");
   await expect(page.getByTestId("record-count")).toHaveText("02");
@@ -328,9 +340,9 @@ test("stages two puts, hides them from reads, commits atomically, and checkpoint
     await page.request.get(`${database.url}/api/snapshot`)
   ).json();
   await terminate(database.process);
-  expect(Array.from((await readFile(database.path)).subarray(64))).toEqual(
-    snapshot.bytes,
-  );
+  expect(
+    Array.from((await readFile(database.path)).subarray(64 + 4096)),
+  ).toEqual(snapshot.bytes);
   expect((await readFile(`${database.path}.wal`)).length).toBe(64);
 });
 
@@ -344,7 +356,7 @@ test("discard and reopen remove pending puts, while checkpoint preserves them", 
   await page.getByRole("button", { name: "Checkpoint", exact: true }).click();
   await expect(
     page.getByText(
-      "Checkpoint complete. Main page synced; WAL reset and synced.",
+      "Checkpoint complete. Main pages synced; WAL reset and synced.",
     ),
   ).toBeVisible();
   await expect(page.getByTestId("staged-count")).toHaveText("1");
@@ -379,7 +391,7 @@ test("recovery lab reports actual child exits and leaves the open database untou
       .click();
     const response = page.waitForResponse(
       (res) =>
-        res.url().endsWith("/api/lab") && res.request().method() === "POST",
+        res.url().includes("/api/lab?") && res.request().method() === "POST",
     );
     await page.getByRole("button", { name: "Run crash & recover" }).click();
     const report = (await (await response).json()).lab;
@@ -387,9 +399,13 @@ test("recovery lab reports actual child exits and leaves the open database untou
     expect(report.process_id).not.toBe(database.process.pid);
     expect(report.database_path).not.toBe(database.path);
     const absent = scenario === "Before commit";
-    expect(report.snapshot.records.map((r: { key: string }) => r.key)).toEqual(
-      absent ? ["seed"] : ["alpha", "beta", "seed"],
-    );
+    expect(report.baseline.record_count).toBe(116);
+    expect(report.snapshot.record_count).toBe(absent ? 116 : 118);
+    expect(report.snapshot.tree_height).toBe(absent ? 2 : 3);
+    expect(report.snapshot.page_count).toBe(absent ? 59 : 62);
+    expect(
+      report.attempted.every((r: { found: boolean }) => r.found === !absent),
+    ).toBe(true);
     await expect(
       page.getByRole("heading", {
         name: absent
@@ -411,6 +427,162 @@ test("recovery lab reports actual child exits and leaves the open database untou
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+});
+
+test("grows a three-level tree, follows a lookup, inspects routing and scans linked leaves", async ({
+  page,
+  database,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto(database.url);
+  for (const count of [64, 128]) {
+    await page
+      .getByRole("button", { name: "Insert 64 sample records" })
+      .click();
+    await expect(page.getByTestId("record-count")).toHaveText(String(count));
+  }
+  await expect(page.getByTestId("tree-height")).toHaveText("3 levels");
+  const state = await (
+    await page.request.get(`${database.url}/api/snapshot`)
+  ).json();
+  expect(state.schema_version).toBe(3);
+  expect(state.pages.length).toBe(state.page_count);
+  await page
+    .getByLabel("PAGE EXPLORER", { exact: true })
+    .selectOption(String(state.root_page_id));
+  await expect(
+    page.getByRole("region", { name: "Internal page routing" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("img", { name: new RegExp(`Page ${state.root_page_id}:`) }),
+  ).toBeVisible();
+  await page.getByLabel("PAGE EXPLORER", { exact: true }).selectOption("0");
+  await expect(
+    page.getByRole("region", { name: "Tree metadata" }),
+  ).toContainText(state.state_checksum);
+  const all = (
+    await (
+      await page.request.post(`${database.url}/api/range`, {
+        headers: { "X-Walnut-Client": "inspector-v1" },
+        data: { start: "", end: null, limit: 256 },
+      })
+    ).json()
+  ).range;
+  const target = all.records[90];
+  await page.getByRole("button", { name: "GET Read" }).click();
+  await page
+    .getByRole("textbox", { name: "Key", exact: true })
+    .fill(target.key);
+  await page.getByRole("button", { name: "Find this key" }).click();
+  await expect(page.getByLabel("Read value")).toHaveText(target.value);
+  await expect(page.getByLabel("PAGE EXPLORER", { exact: true })).toHaveValue(
+    String(target.page_id),
+  );
+  const read = await (
+    await page.request.get(`${database.url}/api/snapshot`)
+  ).json();
+  expect(read.last_search_path).toHaveLength(3);
+  await expect(page.getByTestId("search-path").getByRole("button")).toHaveText(
+    read.last_search_path.map((id: number) => `P${id}`),
+  );
+  const selected = await (
+    await page.request.get(
+      `${database.url}/api/snapshot?page=${target.page_id}`,
+    )
+  ).json();
+  await expect(
+    page.getByRole("img", {
+      name: `Page ${target.page_id}: ${selected.used_bytes} of 4096 bytes used`,
+    }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "SCAN Range" }).click();
+  await page.getByLabel("Result limit").fill("17");
+  await page.getByRole("button", { name: "Scan this range" }).click();
+  const results = page.getByRole("region", { name: "Range results" });
+  await expect(results.locator("li")).toHaveCount(17);
+  expect(await results.locator("li button").allTextContents()).toEqual(
+    all.records
+      .slice(0, 17)
+      .map(
+        (r: { key: string; page_id: number }) => `${r.key} · P${r.page_id} ↗`,
+      ),
+  );
+  await results.getByRole("button", { name: "Next 17 records" }).click();
+  await expect(page.getByLabel("Start key")).toHaveValue(all.records[17].key);
+  await expect(results.locator("li button").first()).toContainText(
+    all.records[17].key,
+  );
+  await results.locator("li button").first().click();
+  await expect(page.getByLabel("PAGE EXPLORER", { exact: true })).toHaveValue(
+    String(all.records[17].page_id),
+  );
+  await page.getByLabel("End key").fill(all.records[20].key);
+  await page.getByRole("button", { name: "Scan this range" }).click();
+  await expect(results.locator("li")).toHaveCount(3);
+  await expect(
+    results.getByRole("button", { name: "Next 17 records" }),
+  ).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page
+    .getByLabel("PAGE EXPLORER", { exact: true })
+    .selectOption(String(state.root_page_id));
+  const branch = page.locator(".tree-children .tree-node").first();
+  await branch.focus();
+  await branch.press("Enter");
+  await expect(page.locator(".tree-breadcrumbs button")).toHaveCount(2);
+  await page.getByRole("button", { name: "Next child pages" }).click();
+  await expect(page.locator(".tree-paging")).toContainText("Children 4–6");
+  expect(errors).toEqual([]);
+});
+
+test("range and page requests validate before a write and preserve the selected inspector page", async ({
+  request,
+  database,
+}) => {
+  const headers = { "X-Walnut-Client": "inspector-v1" };
+  for (const suffix of ["?page=999", "?page=-1", "?page=1&extra=1"]) {
+    expect(
+      (
+        await request.post(`${database.url}/api/put${suffix}`, {
+          headers,
+          data: { key: "must-not-write", value: "x" },
+        })
+      ).status(),
+    ).toBe(400);
+  }
+  for (const input of [
+    { start: "z", end: "a", limit: 5 },
+    { start: "", end: null, limit: 257 },
+    { start: "é".repeat(33), limit: 5 },
+  ]) {
+    expect(
+      (
+        await request.post(`${database.url}/api/range`, {
+          headers,
+          data: input,
+        })
+      ).status(),
+    ).toBe(400);
+  }
+  const state = await (
+    await request.get(`${database.url}/api/snapshot`)
+  ).json();
+  expect(state.generation).toBe(0);
+  const put = await (
+    await request.post(`${database.url}/api/put?page=0`, {
+      headers,
+      data: { key: "meta-selected", value: "yes" },
+    })
+  ).json();
+  expect(put.snapshot.page_id).toBe(0);
+  expect(put.snapshot.record_count).toBe(1);
 });
 
 test("batch API validates before changing state and rejects unknown lab boundaries", async ({

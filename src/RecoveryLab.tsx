@@ -6,7 +6,7 @@ const scenarios = [
     boundary: "after_frame",
     name: "Before commit",
     detail:
-      "Kill after the page image is written, before its commit marker. The staged batch should be absent.",
+      "Kill after all page images are written, before their commit marker. Both puts and the entire split should be absent.",
   },
   {
     boundary: "after_commit_return",
@@ -15,16 +15,16 @@ const scenarios = [
       "Kill after commit returns, before checkpoint. Both puts should recover from the synced log.",
   },
   {
-    boundary: "after_checkpoint_write",
+    boundary: "after_checkpoint_page:3",
     name: "During checkpoint",
     detail:
-      "Kill after the main page write, before its sync. The WAL still holds the complete batch.",
+      "Kill after checkpoint writes page 3, while other pages and the root metadata still need updating. The WAL holds the complete split.",
   },
   {
     boundary: "after_wal_truncate",
     name: "During log reset",
     detail:
-      "Kill after truncation, before syncing the shorter log. The main page is already synced.",
+      "Kill after truncation, before syncing the shorter log. All main pages and metadata are already synced.",
   },
 ];
 
@@ -39,9 +39,10 @@ export function RecoveryLab({
   error: string;
   disabled: boolean;
   running: boolean;
-  run: (boundary: string) => void;
+  run: (boundary: string, scenario: string) => void;
 }) {
   const [boundary, setBoundary] = useState("after_commit_return");
+  const [workload, setWorkload] = useState("root_split");
   const scenario = scenarios.find((s) => s.boundary === boundary)!;
   return (
     <section className="recovery-lab" aria-labelledby="lab-heading">
@@ -54,8 +55,20 @@ export function RecoveryLab({
         </h2>
         <p>
           A real child process. A disposable database. Two puts in one batch.
-          Choose the exact point where the process stops.
+          Enough to split a leaf—or create a new root.
         </p>
+        <label className="lab-workload" htmlFor="lab-workload">
+          Workload
+          <select
+            id="lab-workload"
+            value={workload}
+            disabled={running}
+            onChange={(e) => setWorkload(e.target.value)}
+          >
+            <option value="root_split">Root split · 116 → 118 records</option>
+            <option value="leaf_split">First split · 3 → 5 records</option>
+          </select>
+        </label>
         <div className="lab-scenarios" role="group" aria-label="Crash boundary">
           {scenarios.map((s, i) => (
             <button
@@ -73,7 +86,7 @@ export function RecoveryLab({
         <button
           className="lab-run"
           disabled={disabled}
-          onClick={() => run(boundary)}
+          onClick={() => run(boundary, workload)}
         >
           {running ? "Terminating and recovering…" : "Run crash & recover"}
           <span aria-hidden="true">↗</span>
@@ -132,24 +145,52 @@ export function RecoveryLab({
                 <dt>RECOVERED STATE</dt>
                 <dd>Generation {result.snapshot.generation}</dd>
               </div>
+              <div>
+                <dt>TREE HEIGHT</dt>
+                <dd>
+                  {result.baseline.tree_height} → {result.snapshot.tree_height}{" "}
+                  levels
+                </dd>
+              </div>
+              <div>
+                <dt>NODE PAGES</dt>
+                <dd>
+                  {result.baseline.page_count} → {result.snapshot.page_count}
+                </dd>
+              </div>
+              <div>
+                <dt>ROOT PAGE</dt>
+                <dd>
+                  P{result.baseline.root_page_id} → P
+                  {result.snapshot.root_page_id}
+                </dd>
+              </div>
+              <div>
+                <dt>VERIFIED RECORDS</dt>
+                <dd>{result.verified_records} · every key and value</dd>
+              </div>
             </dl>
             <div className="receipt-records">
               <div>
                 <span>KEY</span>
-                <span>VALUE AFTER REOPEN</span>
+                <span>AFTER REOPEN</span>
               </div>
-              {result.snapshot.records.map((r) => (
+              {result.attempted.map((r) => (
                 <div key={r.key}>
-                  <strong>{r.key}</strong>
-                  <code>{r.value}</code>
+                  <strong title={r.key}>{r.key.slice(0, 11)}…</strong>
+                  <code>
+                    {r.found
+                      ? `${r.value_bytes?.toLocaleString()} B · P${r.page_id}`
+                      : "Absent"}
+                  </code>
                 </div>
               ))}
             </div>
             <p className="receipt-foot">
               {result.outcome === "batch_recovered"
-                ? "alpha + beta recovered together."
-                : "alpha + beta are both absent."}{" "}
-              The baseline record survived.
+                ? "Both records and every page in the split recovered together."
+                : "Both attempted records are absent. The original tree is intact."}{" "}
+              All {result.baseline.record_count} baseline records survived.
             </p>
             <details>
               <summary>Inspect the evidence</summary>
@@ -159,6 +200,10 @@ export function RecoveryLab({
                   {
                     run: result.run_id,
                     boundary: result.boundary,
+                    scenario: result.scenario,
+                    baseline: result.baseline,
+                    attempted: result.attempted,
+                    state_crc32: result.snapshot.state_checksum,
                     exit: result.process_exit,
                     recovery: result.snapshot.recovery,
                   },
@@ -171,9 +216,19 @@ export function RecoveryLab({
         ) : (
           <div className="lab-ready">
             <div className="terminal-prompt">$ walnut lab</div>
-            <p>Start with one saved record.</p>
             <p>
-              Stage <b>alpha → one</b> and <b>beta → two</b>.
+              Start with{" "}
+              {workload === "root_split"
+                ? "116 saved records across 59 pages"
+                : "3 saved records in one leaf"}
+              .
+            </p>
+            <p>
+              Insert <b>two 1,000-byte values</b>. Trigger{" "}
+              {workload === "root_split"
+                ? "a leaf split, a branch split, and a new root"
+                : "a leaf split and a new root"}
+              .
             </p>
             <p>Stop the worker. Reopen the files.</p>
             <span>The result here comes from the recovered database.</span>

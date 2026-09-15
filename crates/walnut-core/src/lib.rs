@@ -1,15 +1,18 @@
-//! One logical page, atomic batches, a redo WAL, and recoverable checkpoints.
-//! See docs/recovery-contract.md for synchronization assumptions and limits.
+//! A paged B+ tree with atomic redo transactions and recoverable checkpoints.
+//! See docs/tree-contract.md for format 3 and its failure model.
 mod engine;
 mod files;
-mod page;
+pub mod legacy;
+pub mod page;
 mod storage;
+pub mod tree;
 pub mod wal;
 
 pub use engine::{Engine, Event, Recovery, Snapshot, WriteOp};
 pub use files::{FileEngine, create_file, open_file, upgrade_file, wal_path};
-pub use page::{HEADER_SIZE, KEY_LIMIT, PAGE_SIZE, Page, Record, VALUE_LIMIT};
+pub use page::{HEADER_SIZE, KEY_LIMIT, MAX_PAGES, Meta, Node, PAGE_SIZE, Record, VALUE_LIMIT};
 pub use storage::{FileStorage, Storage};
+pub use tree::{PageSummary, RangeRecord, RangeResult, Tree};
 
 #[derive(Debug)]
 pub struct Error {

@@ -16,7 +16,7 @@ build.on("error", (error) => {
 const code = await new Promise((resolve) => build.on("exit", resolve));
 if (code !== 0) process.exit(code ?? 1);
 mkdirSync(resolve(root, "data"), { recursive: true });
-const db = process.env.WALNUT_DB || resolve(root, "data/walnut-v2.db");
+const db = process.env.WALNUT_DB || resolve(root, "data/walnut-v3.db");
 const children = [];
 let stopping = false;
 function stop(code = 0) {

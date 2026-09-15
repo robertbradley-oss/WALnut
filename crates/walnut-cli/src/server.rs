@@ -34,6 +34,19 @@ struct Batch {
 #[serde(deny_unknown_fields)]
 struct Lab {
     boundary: String,
+    #[serde(default = "default_scenario")]
+    scenario: String,
+}
+fn default_scenario() -> String {
+    "root_split".into()
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Range {
+    start: String,
+    end: Option<String>,
+    limit: usize,
 }
 
 struct State {
@@ -50,15 +63,15 @@ impl State {
             )
         })
     }
-    fn snapshot(&mut self) -> Result<Value> {
-        let mut value = serde_json::to_value(self.engine()?.snapshot()?).unwrap();
+    fn snapshot(&mut self, page: u32) -> Result<Value> {
+        let mut value = serde_json::to_value(self.engine()?.snapshot_page(page)?).unwrap();
         value["database_name"] = json!(self.path.file_name().unwrap_or_default().to_string_lossy());
         Ok(value)
     }
-    fn reopen(&mut self) -> Result<Value> {
+    fn reopen(&mut self, page: u32) -> Result<Value> {
         drop(self.engine.take());
         self.engine = Some(open_file(&self.path, true)?);
-        self.snapshot()
+        self.snapshot(page)
     }
 }
 
@@ -105,35 +118,58 @@ fn body<T: serde::de::DeserializeOwned>(request: &mut Request) -> Result<T> {
 
 fn api(request: &mut Request, state: &mut State) -> Result<Value> {
     let route = request.url().split('?').next().unwrap_or("").to_owned();
+    let page = match request.url().split_once('?') {
+        None => 1,
+        Some((_, query)) => query
+            .strip_prefix("page=")
+            .and_then(|id| id.parse::<u32>().ok())
+            .ok_or_else(|| Error::new("invalid_request", "Expected ?page=<unsigned page ID>."))?,
+    };
+    // Validate selection before mutations so a bad page cannot hide a successful commit.
+    if route != "/api/reopen" {
+        state.engine()?.snapshot_page(page)?;
+    }
     match (request.method(), route.as_str()) {
-        (&Method::Get, "/api/snapshot") => state.snapshot(),
+        (&Method::Get, "/api/snapshot") => state.snapshot(page),
         (&Method::Post, "/api/put") => {
             let input: Put = body(request)?;
             state.engine()?.put(&input.key, &input.value)?;
             Ok(
-                json!({"snapshot":state.snapshot()?, "result":{"key":input.key,"value":input.value,"found":true}}),
+                json!({"snapshot":state.snapshot(page)?, "result":{"key":input.key,"value":input.value,"found":true}}),
             )
         }
         (&Method::Post, "/api/get") => {
             let input: Get = body(request)?;
             let value = state.engine()?.get(&input.key)?;
             Ok(
-                json!({"snapshot":state.snapshot()?,"result":{"key":input.key,"found":value.is_some(),"value":value}}),
+                json!({"snapshot":state.snapshot(page)?,"result":{"key":input.key,"found":value.is_some(),"value":value}}),
             )
         }
         (&Method::Post, "/api/reopen") => {
             let _: Empty = body(request)?;
-            Ok(json!({"snapshot":state.reopen()?}))
+            Ok(json!({"snapshot":state.reopen(page)?}))
         }
         (&Method::Post, "/api/stage") => {
             let input: Put = body(request)?;
             state.engine()?.stage(&input.key, &input.value)?;
-            Ok(json!({"snapshot":state.snapshot()?}))
+            Ok(json!({"snapshot":state.snapshot(page)?}))
         }
         (&Method::Post, "/api/batch") => {
             let input: Batch = body(request)?;
             state.engine()?.batch(input.writes)?;
-            Ok(json!({"snapshot":state.snapshot()?}))
+            Ok(json!({"snapshot":state.snapshot(page)?}))
+        }
+        (&Method::Post, "/api/range") => {
+            let input: Range = body(request)?;
+            let range = state
+                .engine()?
+                .range(&input.start, input.end.as_deref(), input.limit)?;
+            Ok(json!({"snapshot":state.snapshot(page)?, "range": range}))
+        }
+        (&Method::Post, "/api/grow") => {
+            let _: Empty = body(request)?;
+            crate::workload::grow(state.engine()?)?;
+            Ok(json!({"snapshot":state.snapshot(page)?}))
         }
         (&Method::Post, route @ ("/api/commit" | "/api/discard" | "/api/checkpoint")) => {
             let _: Empty = body(request)?;
@@ -142,7 +178,7 @@ fn api(request: &mut Request, state: &mut State) -> Result<Value> {
                 "/api/discard" => state.engine()?.discard()?,
                 _ => state.engine()?.checkpoint()?,
             }
-            Ok(json!({"snapshot":state.snapshot()?}))
+            Ok(json!({"snapshot":state.snapshot(page)?}))
         }
         (&Method::Post, "/api/lab") => {
             let input: Lab = body(request)?;
@@ -152,7 +188,7 @@ fn api(request: &mut Request, state: &mut State) -> Result<Value> {
                 .unwrap_or(Path::new("."))
                 .join("recovery-lab");
             Ok(
-                json!({"lab":crate::lab::run(&directory,&input.boundary)?,"snapshot":state.snapshot()?}),
+                json!({"lab":crate::lab::run(&directory,&input.boundary,&input.scenario)?,"snapshot":state.snapshot(page)?}),
             )
         }
         _ => Err(Error::new("not_found", "Unknown API route or method.")),
@@ -283,6 +319,8 @@ pub fn serve(args: &[String]) -> Result<()> {
                         | "corrupt_page"
                         | "corrupt_wal"
                         | "unrecoverable_page"
+                        | "unrecoverable_tree"
+                        | "corrupt_tree"
                         | "verification_failed" => 503,
                         "database_locked" | "batch_pending" | "checkpoint_required" => 409,
                         _ => 400,
