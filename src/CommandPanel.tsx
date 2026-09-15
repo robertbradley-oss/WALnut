@@ -23,6 +23,7 @@ interface CommandPanelProps {
   snapshot: Snapshot | null;
   busy: boolean;
   connected: boolean;
+  waiting?: boolean;
   onCommand: (
     kind: LiveCommand,
     body?: unknown,
@@ -67,6 +68,7 @@ export function CommandPanel({
   snapshot,
   busy,
   connected,
+  waiting = false,
   onCommand,
   onSelectPage,
 }: CommandPanelProps) {
@@ -91,7 +93,7 @@ export function CommandPanel({
   } | null>(null);
 
   const working = busy || pending;
-  const disabled = working || !connected;
+  const disabled = working || !connected || waiting;
   const staged = snapshot?.staged ?? [];
   const keyBytes = byteLength(key);
   const valueBytes = byteLength(value);
@@ -126,7 +128,13 @@ export function CommandPanel({
   }
 
   async function execute(kind: LiveCommand, continuation?: ScanState) {
-    if (submitting.current || busy || (!connected && kind !== "reopen")) return;
+    if (
+      submitting.current ||
+      busy ||
+      waiting ||
+      (!connected && kind !== "reopen")
+    )
+      return;
     if ((kind === "put" || kind === "stage") && (invalidKey || invalidValue))
       return;
     if (kind === "get" && invalidKey) return;
@@ -457,7 +465,7 @@ export function CommandPanel({
           </p>
         ) : (
           <p className="command-idle">
-            {working
+            {working || waiting
               ? "Waiting for the engine…"
               : !connected
                 ? "Engine offline. Reopen to reconnect."
@@ -530,7 +538,7 @@ export function CommandPanel({
         <button
           type="button"
           aria-label="Reopen database"
-          disabled={working}
+          disabled={working || waiting}
           onClick={() => void execute("reopen")}
         >
           <svg viewBox="0 0 20 20" aria-hidden="true">

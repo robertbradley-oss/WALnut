@@ -1,3 +1,4 @@
+mod benchmark;
 mod lab;
 mod server;
 mod story;
@@ -7,6 +8,14 @@ use walnut_core::{Error, Result, WriteOp, create_file, open_file, upgrade_file};
 
 fn run(args: &[String]) -> Result<()> {
     match args {
+        [command, directory] if command == "benchmark" || command == "profile-fixture" => {
+            let result = if command == "benchmark" {
+                benchmark::run(Path::new(directory))?
+            } else {
+                benchmark::fixture(Path::new(directory))?
+            };
+            println!("{}", result);
+        }
         [command, path] if command == "create" => {
             let engine = create_file(Path::new(path), true)?;
             println!("{}", serde_json::to_string(&engine.snapshot()?).unwrap());
@@ -116,13 +125,13 @@ fn run(args: &[String]) -> Result<()> {
             server::serve(rest)?;
         }
         [command] if command == "--version" => println!(
-            "WALnut {} (storage format 3, page format 2, phase 4)",
+            "WALnut {} (storage format 3, page format 2, phase 5)",
             env!("CARGO_PKG_VERSION")
         ),
         _ => {
             return Err(Error::new(
                 "usage",
-                "walnut create <file> | put <file> <key> <value> | batch <file> <json-array> | get <file> <key> | range <file> <start> [--end <exclusive-key>] [--limit <1–256>] | inspect <file> [page-id] | grow <file> | checkpoint <file> | upgrade <source> <new-target> | lab <directory> <boundary> [leaf_split|root_split] | story <directory> <split|recovery|checkpoint> | serve <file> [--port 7878] [--ui dist]",
+                "walnut create <file> | put <file> <key> <value> | batch <file> <json-array> | get <file> <key> | range <file> <start> [--end <exclusive-key>] [--limit <1–256>] | inspect <file> [page-id] | grow <file> | checkpoint <file> | upgrade <source> <new-target> | lab <directory> <boundary> [leaf_split|root_split] | story <directory> <split|recovery|checkpoint> | benchmark <new-directory> | profile-fixture <new-directory> | serve <file> [--port 7878] [--ui dist]",
             ));
         }
     }

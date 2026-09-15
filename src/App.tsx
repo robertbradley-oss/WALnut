@@ -14,6 +14,7 @@ import { RecoveryLab } from "./RecoveryLab";
 import { StoryGuide, StoryPlayer } from "./StoryPlayer";
 import { Orientation } from "./Orientation";
 import { validateSnapshot, validateStory } from "./protocol";
+import { timed } from "./timing";
 import "./recovery.css";
 import "./workbench.css";
 
@@ -70,6 +71,8 @@ export default function App() {
   const [live, setLive] = useState<Snapshot | null>(null);
   const [connected, setConnected] = useState(false);
   const [connectionError, setConnectionError] = useState("");
+  const [lagging, setLagging] = useState(false);
+  const [missedEvents, setMissedEvents] = useState(0);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"live" | "replay">(() =>
     new URLSearchParams(window.location.search).get("mode") === "live"
@@ -94,25 +97,50 @@ export default function App() {
   const busyRef = useRef(false);
   const requestEpoch = useRef(0);
   const polling = useRef(false);
+  const lastAccepted = useRef<Snapshot | null>(null);
+  const available = connected && !lagging;
 
   const accept = useCallback((value: unknown) => {
     let snapshot: Snapshot;
     try {
-      snapshot = validateSnapshot(value);
+      snapshot = timed("walnut:snapshot:validate", () =>
+        validateSnapshot(value),
+      );
+      const previous = lastAccepted.current;
+      if (previous?.session_id === snapshot.session_id) {
+        const last = previous.events.at(-1)?.sequence ?? 0;
+        const first = snapshot.events[0]?.sequence ?? 0;
+        if (
+          snapshot.database_id !== previous.database_id ||
+          snapshot.generation < previous.generation ||
+          (snapshot.events.at(-1)?.sequence ?? 0) < last
+        ) {
+          throw new Error(
+            "The engine returned an older snapshot from the same session. Reconnect to refresh.",
+          );
+        }
+        if (first > last + 1)
+          setMissedEvents((count) => count + first - last - 1);
+      } else setMissedEvents(0);
     } catch (error) {
       setConnected(false);
       setConnectionError(message(error));
       throw new EngineError(message(error));
     }
     setLive(snapshot);
+    lastAccepted.current = snapshot;
     livePage.current = snapshot.page_id;
     setConnected(true);
     setConnectionError("");
+    setLagging(false);
   }, []);
   const refresh = useCallback(async () => {
     if (busyRef.current || polling.current) return;
     polling.current = true;
     const epoch = requestEpoch.current;
+    const delay = setTimeout(() => {
+      if (requestEpoch.current === epoch && !busyRef.current) setLagging(true);
+    }, 2500);
     try {
       let snapshot: Snapshot;
       try {
@@ -134,6 +162,8 @@ export default function App() {
         setConnectionError(message(error));
       }
     } finally {
+      clearTimeout(delay);
+      setLagging(false);
       polling.current = false;
     }
   }, [accept]);
@@ -166,7 +196,7 @@ export default function App() {
     kind: LiveCommand,
     body: unknown = {},
   ): Promise<CommandResponse | undefined> => {
-    if (busyRef.current || mode !== "live" || (!connected && kind !== "reopen"))
+    if (busyRef.current || mode !== "live" || (!available && kind !== "reopen"))
       return;
     begin();
     setNotice("");
@@ -228,7 +258,7 @@ export default function App() {
       setRecordedPage(id);
       return;
     }
-    if (!connected) return;
+    if (!available) return;
     begin();
     try {
       accept(await request<Snapshot>(`snapshot?page=${id}`));
@@ -279,7 +309,7 @@ export default function App() {
     if (next === "live") void refresh();
   };
   const runStory = async (selectedScenario: StoryScenario = scenario) => {
-    if (busyRef.current || !connected) return;
+    if (busyRef.current || !available) return;
     begin();
     setStoryRunning(true);
     setStoryError("");
@@ -288,7 +318,9 @@ export default function App() {
         `story?page=${livePage.current}`,
         { scenario: selectedScenario },
       );
-      const recording = validateStory(response.story);
+      const recording = timed("walnut:story:validate", () =>
+        validateStory(response.story),
+      );
       accept(response.snapshot);
       setStory(recording);
       setIndex(0);
@@ -303,7 +335,7 @@ export default function App() {
     }
   };
   const runLab = async (boundary: string, scenario: string) => {
-    if (busyRef.current || !connected) return;
+    if (busyRef.current || !available) return;
     begin();
     setLabRunning(true);
     setLabError("");
@@ -333,7 +365,7 @@ export default function App() {
       : frame && captured
         ? { ...frame.capture.snapshot, ...captured }
         : null;
-  const snapshotDisabled = busy || (mode === "live" && !connected);
+  const snapshotDisabled = busy || (mode === "live" && !available);
 
   return (
     <div className="workbench">
@@ -349,9 +381,11 @@ export default function App() {
         </a>
         <span className="work-tagline">A database, from the inside.</span>
         <div className="work-connection">
-          <span className={connected ? "is-connected" : ""} role="status">
+          <span className={available ? "is-connected" : ""} role="status">
             {connected
-              ? "Engine connected"
+              ? lagging
+                ? "Engine delayed"
+                : "Engine connected"
               : connectionError
                 ? "Engine offline"
                 : "Connecting to engine…"}
@@ -390,7 +424,7 @@ export default function App() {
           {mode === "live" && (
             <button
               className="work-grow"
-              disabled={busy || !connected || !!live?.staged.length}
+              disabled={busy || !available || !!live?.staged.length}
               onClick={() => void globalCommand("grow")}
               aria-label="Insert 64 sample records"
             >
@@ -412,6 +446,20 @@ export default function App() {
             <button disabled={busy} onClick={() => void refresh()}>
               Reconnect
             </button>
+          </div>
+        )}
+        {lagging && !connectionError && (
+          <div className="work-offline" role="status">
+            <div>
+              <strong>Waiting for the engine.</strong> The snapshot request is
+              taking longer than usual.
+              {live
+                ? " Showing the last verified state until it completes."
+                : " Waiting for the first verified snapshot."}
+              {mode === "replay" && story
+                ? " Recorded playback remains available."
+                : ""}
+            </div>
           </div>
         )}
         <div
@@ -491,6 +539,7 @@ export default function App() {
               snapshot={live}
               busy={busy}
               connected={connected}
+              waiting={lagging}
               onCommand={execute}
               onSelectPage={(id, key) => void selectPage(id, key)}
             />
@@ -507,7 +556,7 @@ export default function App() {
               }}
               run={() => void runStory()}
               busy={storyRunning}
-              connected={connected}
+              connected={available}
               error={storyError}
             />
           )}
@@ -524,7 +573,7 @@ export default function App() {
               />
             ) : mode === "replay" ? (
               <Orientation
-                disabled={busy || !connected}
+                disabled={busy || !available}
                 onStart={() => {
                   setScenario("split");
                   void runStory("split");
@@ -615,6 +664,12 @@ export default function App() {
               </div>
               <span>Page links inspect the current state.</span>
             </header>
+            {missedEvents > 0 && (
+              <p className="work-stream-gap" role="status">
+                Timeline gap: {missedEvents} events passed outside the retained
+                window. The current snapshot is complete.
+              </p>
+            )}
             <ol>
               {live.events.slice(-6).map((event) => (
                 <li key={`${event.session_id}:${event.sequence}`}>
@@ -665,7 +720,7 @@ export default function App() {
           <RecoveryLab
             result={labResult}
             error={labError}
-            disabled={busy || !connected}
+            disabled={busy || !available}
             running={labRunning}
             run={(boundary, scenario) => void runLab(boundary, scenario)}
           />

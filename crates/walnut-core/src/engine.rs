@@ -393,16 +393,18 @@ impl<D: Storage, W: Storage> Engine<D, W> {
         Ok(())
     }
     fn trace_path(&mut self, path: Vec<u32>, key: Option<&str>) {
-        self.last_path = path.clone();
-        for (i, id) in path.iter().enumerate() {
-            self.emit(
-                "search_step",
-                key,
-                Some(*id),
-                path.get(i + 1).copied(),
-                &format!("Visited {} page {id}.", self.tree.pages[id].kind()),
-            );
+        if self.tracing {
+            for (i, id) in path.iter().enumerate() {
+                self.emit(
+                    "search_step",
+                    key,
+                    Some(*id),
+                    path.get(i + 1).copied(),
+                    &format!("Visited {} page {id}.", self.tree.pages[id].kind()),
+                );
+            }
         }
+        self.last_path = path;
     }
     pub fn get(&mut self, key: &str) -> Result<Option<String>> {
         self.ready()?;

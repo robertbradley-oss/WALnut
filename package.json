@@ -13,10 +13,12 @@
     "cargo": "node scripts/cargo.mjs",
     "build": "tsc -b && vite build",
     "test:core": "node scripts/cargo.mjs test --workspace --locked",
+    "benchmark": "node scripts/cargo.mjs build --release --locked && node scripts/benchmark.mjs",
+    "profile:inspector": "npm run build && node scripts/cargo.mjs build --release --locked && node scripts/browser.mjs test --config bench/playwright.config.ts",
     "browser:install": "node scripts/browser.mjs install chromium",
     "test:e2e": "npm run build && node scripts/cargo.mjs build --locked && node scripts/browser.mjs test",
-    "format": "prettier --write src scripts tests docs README.md AGENTS.md package.json tsconfig.json vite.config.ts playwright.config.ts .github/workflows/ci.yml",
-    "check": "prettier --check src scripts tests docs README.md AGENTS.md package.json tsconfig.json vite.config.ts playwright.config.ts .github/workflows/ci.yml && tsc -b && node scripts/cargo.mjs fmt --all -- --check && node scripts/cargo.mjs clippy --workspace --all-targets --locked -- -D warnings"
+    "format": "prettier --write src scripts tests bench docs README.md AGENTS.md package.json tsconfig.json vite.config.ts playwright.config.ts .github/workflows/ci.yml",
+    "check": "prettier --check src scripts tests bench docs README.md AGENTS.md package.json tsconfig.json vite.config.ts playwright.config.ts .github/workflows/ci.yml && tsc -b && node scripts/cargo.mjs fmt --all -- --check && node scripts/cargo.mjs clippy --workspace --all-targets --locked -- -D warnings"
   },
   "dependencies": {
     "@fontsource-variable/jetbrains-mono": "5.3.0",

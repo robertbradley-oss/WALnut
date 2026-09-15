@@ -167,6 +167,134 @@ const test = base.extend<{
   },
 });
 
+test("slow polling keeps one request in flight, holds verified data and recovers", async ({
+  page,
+  database,
+}, testInfo) => {
+  await page.goto(`${database.url}/?mode=live`);
+  await expect(engineStatus(page)).toHaveText("Engine connected");
+  const original = await snapshot(page, database.url);
+  let release!: () => void;
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  let inFlight = 0;
+  let maximum = 0;
+  let intercepted = 0;
+  await page.route("**/api/snapshot?*", async (route) => {
+    intercepted++;
+    inFlight++;
+    maximum = Math.max(maximum, inFlight);
+    await held;
+    await route.continue();
+    inFlight--;
+  });
+  try {
+    await expect(page.getByText("Engine delayed", { exact: true })).toBeVisible(
+      { timeout: 7000 },
+    );
+    await expect(
+      page.getByRole("status").filter({ hasText: "Waiting for the engine." }),
+    ).toContainText("last verified state");
+    await expect(page.getByTestId("record-count")).toHaveText(
+      String(original.record_count).padStart(2, "0"),
+    );
+    await expect(
+      page.getByRole("button", { name: "Insert 64 sample records" }),
+    ).toBeDisabled();
+    await expect(
+      page.getByText("Engine offline. Reopen to reconnect."),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Reopen database" }),
+    ).toBeDisabled();
+    await captureReview(page, testInfo, "delayed-engine");
+    expect(intercepted).toBe(1);
+    expect(maximum).toBe(1);
+  } finally {
+    release();
+  }
+  await expect(engineStatus(page)).toHaveText("Engine connected");
+  await expect(
+    page.getByRole("button", { name: "Insert 64 sample records" }),
+  ).toBeEnabled();
+});
+
+test("timeline reports skipped events and a new session resets the gap", async ({
+  page,
+  database,
+}, testInfo) => {
+  await page.goto(`${database.url}/?mode=live`);
+  await expect(engineStatus(page)).toHaveText("Engine connected");
+  const initial = await snapshot(page, database.url);
+  // Freeze browser polls while independent API reads outrun the retained 128-event window.
+  let current = initial;
+  await page.route("**/api/snapshot?*", (route) =>
+    route.fulfill({ json: current }),
+  );
+  for (let i = 0; i < 80; i++) {
+    const response = await page.request.post(`${database.url}/api/get`, {
+      headers: commandHeaders,
+      data: { key: "missing" },
+    });
+    expect(response.ok()).toBe(true);
+  }
+  current = await snapshot(page, database.url);
+  const skipped =
+    current.events[0].sequence - initial.events.at(-1)!.sequence - 1;
+  expect(skipped).toBeGreaterThan(0);
+  await expect(
+    page.getByText(
+      `Timeline gap: ${skipped} events passed outside the retained window. The current snapshot is complete.`,
+    ),
+  ).toBeVisible();
+  await captureReview(page, testInfo, "timeline-gap");
+  const response = await page.request.post(`${database.url}/api/reopen`, {
+    headers: commandHeaders,
+    data: {},
+  });
+  expect(response.ok()).toBe(true);
+  current = (await response.json()).snapshot;
+  await expect(page.locator(".work-stream-gap")).toHaveCount(0);
+  await expect(engineStatus(page)).toHaveText("Engine connected");
+});
+
+test("out-of-order snapshots and discontinuous event windows retain verified state", async ({
+  page,
+  database,
+}) => {
+  await page.goto(`${database.url}/?mode=live`);
+  await expect(engineStatus(page)).toHaveText("Engine connected");
+  const earlier = await snapshot(page, database.url);
+  await page.request.post(`${database.url}/api/put`, {
+    headers: commandHeaders,
+    data: { key: "verified", value: "latest" },
+  });
+  const latest = await snapshot(page, database.url);
+  await expect(page.getByTestId("generation")).toHaveText(
+    String(latest.generation).padStart(2, "0"),
+  );
+  await page.route("**/api/snapshot?*", (route) =>
+    route.fulfill({ json: earlier }),
+  );
+  await expect(engineStatus(page)).toHaveText("Engine offline");
+  await expect(page.getByTestId("generation")).toHaveText(
+    String(latest.generation).padStart(2, "0"),
+  );
+  await page.unroute("**/api/snapshot?*");
+  await page.getByRole("button", { name: "Reconnect", exact: true }).click();
+  await expect(engineStatus(page)).toHaveText("Engine connected");
+  const malformed = structuredClone(latest);
+  malformed.events[1].sequence = malformed.events[0].sequence;
+  await page.route("**/api/snapshot?*", (route) =>
+    route.fulfill({ json: malformed }),
+  );
+  await expect(engineStatus(page)).toHaveText("Engine offline");
+  await expect(page.getByTestId("generation")).toHaveText(
+    String(latest.generation).padStart(2, "0"),
+  );
+});
+
 test("writes real bytes, reads a value, and preserves it across file reopen", async ({
   page,
   database,

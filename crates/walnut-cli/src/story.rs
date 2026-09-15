@@ -25,7 +25,7 @@ fn validate(scenario: &str) -> Result<&'static str> {
     }
 }
 
-fn capture(engine: &FileEngine, path: &Path, focus: u32) -> Result<Value> {
+pub(crate) fn capture(engine: &FileEngine, path: &Path, focus: u32) -> Result<Value> {
     let selected = engine.snapshot_page(focus)?;
     let mut pages = Vec::with_capacity(selected.page_count + 1);
     for id in std::iter::once(0).chain(selected.pages.iter().map(|page| page.id)) {

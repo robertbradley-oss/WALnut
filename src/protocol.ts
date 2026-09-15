@@ -498,13 +498,19 @@ export function validateSnapshot(input: unknown): Snapshot {
     integer(recovery[name], name, 0, 1024);
   integer(recovery.discarded_tail_bytes, "discarded WAL tail", 0, WAL_LIMIT);
   boolean(recovery.repaired_page, "checkpoint repair state");
+  let previousSequence: number | undefined;
   for (const input of array(value.events, "engine events", 128)) {
     const event = object(input, "event");
     assertProtocol(
       event.schema_version === 3 && event.session_id === value.session_id,
       "event source or schema is inconsistent",
     );
-    integer(event.sequence, "event sequence");
+    const sequence = integer(event.sequence, "event sequence", 1);
+    assertProtocol(
+      previousSequence === undefined || sequence === previousSequence + 1,
+      "retained event sequence is discontinuous",
+    );
+    previousSequence = sequence;
     integer(event.operation, "event operation");
     integer(event.generation, "event generation", 0, generation);
     text(event.kind, "event kind", 128, false);

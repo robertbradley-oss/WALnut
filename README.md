@@ -4,7 +4,7 @@
 
 Grow a B+ tree, follow a key through its pages, then interrupt a split and inspect what recovery brings back. The tree, log entries, records, and hex bytes come from a real Rust engine.
 
-WALnut is a local learning and portfolio project. **Phase 4 adds a coordinated workbench and three replayable engine stories** to the paged B+ tree, cascading splits, range scans, atomic batches, and WAL recovery.
+WALnut is a local learning and portfolio project. **Phase 5 adds reproducible benchmarks, mixed-workload fault testing, and large-tree inspector profiling** to the coordinated workbench and three replayable engine stories.
 
 ## Run locally
 
@@ -114,7 +114,18 @@ npm run test:e2e
 
 Linux browser setup may also need `node scripts/browser.mjs install --with-deps chromium`. Browser files stay in `.tools/browsers` by default. End-to-end tests create isolated real databases in `work/` and run the built Rust server and inspector.
 
-The GitHub Actions workflow defines the same checks for Windows and Linux. Hosted CI has not run for this local checkpoint; see [phase 4 verification](docs/stage-4.md) for observed results and remaining review.
+The GitHub Actions workflow defines the same checks for Windows and Linux. Hosted CI has not run for this local checkpoint; see [phase 5 verification](docs/stage-5.md) for observed results and remaining review.
+
+## Measure it
+
+```sh
+npm run benchmark
+npm run profile:inspector
+```
+
+The release benchmark checks deterministic datasets of 128, 512, and 1,792 records, with tracing off/on, indexed versus sequential reads, scans, durable updates/batches, checkpoints, and recovery. It records latency distributions, source/environment metadata, and file growth in a fresh `work/` directory. The separate inspector profile uses real 927-page live and 62-page recorded captures. See [results, workload definitions, and reproduction](docs/performance.md).
+
+Live polling reports delayed responses and events skipped outside the retained 128-event window. It keeps the last verified state and rejects snapshots that move backward within the same engine session.
 
 ## Read the implementation
 
@@ -126,4 +137,4 @@ The GitHub Actions workflow defines the same checks for Windows and Linux. Hoste
 - `src`: live inspector
 - `tests`: browser and API integration checks
 
-Next: Phase 5's broader fault analysis and reproducible performance measurements. The goal remains: **make WALnut technologically and visually impressive.**
+Next: Phase 6's portfolio presentation, portable recorded demo, platform checks, and follow-up usability walkthrough. The goal remains: **make WALnut technologically and visually impressive.**
