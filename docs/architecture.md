@@ -1,4 +1,4 @@
-# Phase 3 architecture
+# WALnut architecture
 
 ## One owner, a paged tree, two files
 
@@ -53,7 +53,17 @@ The tree explorer shows the selected internal page (or the parent of a selected 
 
 The page map and hex view use exact byte spans. Range results include their source leaf IDs and a next-key cursor; scans use an inclusive start, an optional exclusive end, and a 1–256 result limit. A cursor resumes against the current committed tree, not a retained snapshot from an earlier request. The sample button commits 64 deterministic records with full-size keys and 1,000-byte values; it checks for collisions before inserting.
 
-Snapshots perform no I/O and emit no events. The engine retains 128 events and returns the latest 32 WAL frame descriptions; the interface displays 16 events and six frames, with total counts labeled separately. Split events are emitted only after successful commit. Polling pauses during commands and rejects stale responses. Disconnect leaves a labeled last verified snapshot and disables writes. Full timeline playback, coordinated motion, and guided stories belong to phase 4.
+Snapshots perform no I/O and emit no events. The engine retains 128 events and returns the latest 32 WAL frame descriptions; the workbench displays the latest six events and six frames, with retained events available in a disclosure. Split events are emitted only after successful commit. Polling pauses during commands and rejects stale responses. Disconnect leaves a labeled last verified snapshot and disables writes. The browser validates response versions, integer bounds, page lengths, and the agreement between page bytes and rendered summaries before replacing verified state.
+
+## Recorded stories and playback
+
+The initial guided view introduces the storage engine and its panels. `?mode=live` opens the command workbench directly. A story request runs the actual Rust engine against a fresh disposable database under `recorded-stories/` beside the live database. It returns story schema 1, source engine/storage/page versions, the workload and retained file path, and four or five operation frames. Each frame includes a complete tree snapshot and every allocated page's committed and available checkpoint bytes, including metadata page 0.
+
+The split recording captures baseline, staging, commit, and lookup. Staging retains the committed tree. The checkpoint recording captures baseline, commit, checkpoint, and reopen. The recovery recording captures baseline, acknowledged commit, process termination, recovered open, and lookup. A dedicated child prints its actual committed capture before pausing; the parent terminates and reaps it before reopening the pair. The stopped-process frame deliberately repeats the last pre-termination capture and labels it as such. It does not pretend to inspect a running engine after termination.
+
+The primary database and its pending batch are preserved across story runs. The browser keeps live and recorded state separately. Play, pause, step, speed, page selection, and reset operate on the retained recording without API writes. Returning to live mode resumes current inspection. A new story run creates new files; resetting a recording creates none. Polling the primary continues independently of playback, and replay remains usable offline. Reloading the browser clears its in-memory recording; portable exported replay is part of Phase 6.
+
+Playback advances between completed, observable engine operations. Events within a commit are explanatory evidence, not intermediate tree or disk snapshots. Live event links and WAL page links inspect the selected current snapshot; they do not imply time travel into an old transaction. Page identity, search paths, latest-write markers, and split markers remain distinct. The canvas displays a bounded branch window, actual connecting edges, ancestry, leaf links, and explicit pagination rather than every allocated page at once.
 
 ## Split recovery lab
 
@@ -74,22 +84,23 @@ The bridge binds to `127.0.0.1`; its database path is set at startup. Writes req
 
 Every route accepts `?page=<id>` to choose the returned snapshot page; the default is 1. Page selection is validated before mutations so an invalid selection cannot conceal a successful write. Reopen remains available when a failed operation has poisoned or closed the handle.
 
-| Route                  | JSON body                       | Result                                          |
-| ---------------------- | ------------------------------- | ----------------------------------------------- |
-| `GET /api/snapshot`    | —                               | Current selected-page and tree snapshot         |
-| `POST /api/put`        | `{key, value}`                  | Commit one put                                  |
-| `POST /api/get`        | `{key}`                         | Committed value and actual search path          |
-| `POST /api/range`      | `{start, end, limit}`           | Ordered records, leaf IDs, next key             |
-| `POST /api/grow`       | `{}`                            | Commit 64 sample records                        |
-| `POST /api/stage`      | `{key, value}`                  | Add to pending batch                            |
-| `POST /api/batch`      | `{writes: [{key, value}, ...]}` | Validate and commit a batch                     |
-| `POST /api/commit`     | `{}`                            | Commit pending batch                            |
-| `POST /api/discard`    | `{}`                            | Discard pending batch                           |
-| `POST /api/checkpoint` | `{}`                            | Checkpoint committed tree                       |
-| `POST /api/reopen`     | `{}`                            | Close, recover, reset session                   |
-| `POST /api/lab`        | `{boundary, scenario}`          | Disposable split scenario; default `root_split` |
+| Route                  | JSON body                       | Result                                                                            |
+| ---------------------- | ------------------------------- | --------------------------------------------------------------------------------- |
+| `GET /api/snapshot`    | —                               | Current selected-page and tree snapshot                                           |
+| `POST /api/put`        | `{key, value}`                  | Commit one put                                                                    |
+| `POST /api/get`        | `{key}`                         | Committed value and actual search path                                            |
+| `POST /api/range`      | `{start, end, limit}`           | Ordered records, leaf IDs, next key                                               |
+| `POST /api/grow`       | `{}`                            | Commit 64 sample records                                                          |
+| `POST /api/stage`      | `{key, value}`                  | Add to pending batch                                                              |
+| `POST /api/batch`      | `{writes: [{key, value}, ...]}` | Validate and commit a batch                                                       |
+| `POST /api/commit`     | `{}`                            | Commit pending batch                                                              |
+| `POST /api/discard`    | `{}`                            | Discard pending batch                                                             |
+| `POST /api/checkpoint` | `{}`                            | Checkpoint committed tree                                                         |
+| `POST /api/reopen`     | `{}`                            | Close, recover, reset session                                                     |
+| `POST /api/lab`        | `{boundary, scenario}`          | Disposable split scenario; default `root_split`                                   |
+| `POST /api/story`      | `{scenario}`                    | Recorded `split`, `recovery`, or `checkpoint` run plus unchanged primary snapshot |
 
-Bodies are capped at 128 KB and unknown fields are rejected. Commands return a fresh snapshot with their result. The inspector rejects generations outside JavaScript's exact integer range; the Rust CLI retains the full unsigned 64-bit generation.
+Bodies must be JSON objects, are capped at 128 KB, and reject unknown or duplicate fields. Commands return a fresh snapshot with their result. The inspector rejects generations outside JavaScript's exact integer range; the Rust CLI retains the full unsigned 64-bit generation.
 
 ## Compatibility
 

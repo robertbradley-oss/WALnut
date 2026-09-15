@@ -1,0 +1,484 @@
+.live-command {
+  min-width: 0;
+  padding: 22px 20px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.command-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.command-eyebrow {
+  display: block;
+  color: var(--quiet);
+  font: 9px/1.5 var(--mono);
+  letter-spacing: 0.11em;
+}
+
+.command-heading h2 {
+  margin: 7px 0 0;
+  font-size: 18px;
+  line-height: 1.3;
+  letter-spacing: -0.035em;
+  font-weight: 650;
+}
+
+.command-prompt {
+  color: var(--accent);
+  font: 18px var(--mono);
+}
+
+.command-intro {
+  margin: 11px 0 19px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.command-operations {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #15140f;
+  margin-bottom: 22px;
+}
+
+.command-operations button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 9px 3px;
+  border: 1px solid transparent;
+  color: var(--muted);
+  background: transparent;
+  font: 10px/1.3 var(--mono);
+}
+
+.command-operations button span {
+  font:
+    10px/1.3 "Manrope Variable",
+    sans-serif;
+}
+
+.command-operations button[aria-pressed="true"] {
+  border-color: #655237;
+  background: #332c20;
+  color: #f0cc91;
+  box-shadow: 0 2px 6px #0003;
+}
+
+.command-form label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.command-form label span {
+  color: var(--muted);
+  font: 9px/1.4 var(--mono);
+}
+
+.command-form input,
+.command-form textarea {
+  margin: 0 0 17px;
+  padding: 10px 11px;
+  border: 1px solid var(--line-bright);
+  border-radius: 6px;
+  background: #171510;
+  color: #eee4d2;
+  font: 12px/1.7 var(--mono);
+  width: 100%;
+  min-width: 0;
+  box-shadow: inset 0 1px 3px #0002;
+}
+
+.command-form textarea {
+  min-height: 88px;
+  max-height: 240px;
+  resize: vertical;
+  margin-bottom: 9px;
+}
+
+.command-form input::placeholder {
+  color: #928a7a;
+  font-size: 10px;
+}
+
+.command-form input[aria-invalid="true"],
+.command-form textarea[aria-invalid="true"] {
+  border-color: #cc9279;
+}
+
+.command-form label .command-invalid,
+.command-form .command-invalid {
+  color: #efb5a0;
+}
+
+.command-help {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.command-limit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 14px;
+}
+
+.command-limit-row label {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+}
+
+.command-limit-row input {
+  width: 84px;
+  margin: 0;
+}
+
+.command-submit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid #ebce9f;
+  background: var(--accent);
+  color: #2c2217;
+  font-size: 11px;
+  font-weight: 750;
+  box-shadow: inset 0 1px #fff3;
+}
+
+.command-submit > span:last-child {
+  font: 17px/1 var(--mono);
+}
+
+.command-stage {
+  width: 100%;
+  min-height: 38px;
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border: 1px solid var(--line-bright);
+  color: var(--accent);
+  background: transparent;
+  font-size: 11px;
+}
+
+.command-stage + .command-help {
+  margin: 9px 0 0;
+}
+
+.command-batch {
+  margin-top: 18px;
+  padding: 13px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 7px;
+  background: #211e17;
+}
+
+.command-batch-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.command-batch-heading strong {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.command-batch-heading > span {
+  white-space: nowrap;
+  color: var(--muted);
+  font: 9px var(--mono);
+}
+
+.command-batch > p {
+  color: var(--muted);
+  margin: 6px 0 11px;
+  font-size: 9px;
+  line-height: 1.6;
+}
+
+.command-batch ol,
+.command-results ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 232px;
+  overflow: auto;
+  scrollbar-color: var(--line-bright) transparent;
+  scrollbar-width: thin;
+}
+
+.command-batch li {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.command-batch li > span,
+.command-batch li > code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 10px/1.7 var(--mono);
+}
+
+.command-batch li > code {
+  color: var(--muted);
+}
+
+.command-batch-actions {
+  display: flex;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.command-batch-actions button,
+.command-next {
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-bright);
+  background: var(--surface-raised);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.command-batch-actions button:first-child {
+  flex: 1;
+}
+
+.command-batch-actions button:last-child {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.command-feedback-area {
+  min-height: 53px;
+  padding: 13px 0 16px;
+  font-size: 10px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+
+.command-feedback-area p {
+  margin: 0;
+}
+
+.command-idle {
+  color: var(--quiet);
+}
+
+.command-success {
+  color: #bbcca5;
+}
+
+.command-error {
+  padding: 9px 11px;
+  border: 1px solid #75513f;
+  border-radius: 5px;
+  background: #33231c;
+  color: #f2bda4;
+}
+
+.command-read {
+  display: block;
+  margin-top: 11px;
+  padding: 11px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: #171510;
+  color: var(--text);
+  font: 11px/1.7 var(--mono);
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.command-read em {
+  color: var(--muted);
+}
+
+.command-results {
+  border-top: 1px solid var(--line);
+  padding: 15px 0 18px;
+  min-width: 0;
+}
+
+.command-results h3 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.command-results h3 span {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.command-results > p {
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.command-results li {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.command-results li button {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  text-align: left;
+  width: 100%;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--accent);
+  font: 10px/1.7 var(--mono);
+}
+
+.command-results li button > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.command-results li small {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.command-results li code {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font: 10px/1.7 var(--mono);
+}
+
+.command-next {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.command-results > .command-range-end {
+  margin-top: 10px;
+  font: 9px/1.5 var(--mono);
+}
+
+.command-reopen {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+  padding: 15px 0 18px;
+  border-top: 1px solid var(--line);
+}
+
+.command-reopen strong {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.command-reopen p {
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.7;
+  margin: 4px 0 0;
+}
+
+.command-reopen button {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex-shrink: 0;
+  padding: 8px;
+  border: 1px solid var(--line-bright);
+  background: var(--surface-raised);
+  color: var(--accent);
+}
+
+.command-reopen svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.command-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-command button {
+    transition: none;
+  }
+}
+
+@media (max-width: 620px) {
+  .live-command {
+    padding: 20px 18px 0;
+  }
+
+  .command-operations button {
+    flex-direction: row;
+    justify-content: center;
+    gap: 7px;
+    min-height: 39px;
+  }
+
+  .command-form input,
+  .command-form textarea {
+    font-size: 16px;
+  }
+
+  .command-results li button {
+    min-height: 36px;
+  }
+}

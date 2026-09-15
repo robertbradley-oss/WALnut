@@ -37,6 +37,11 @@ struct Lab {
     #[serde(default = "default_scenario")]
     scenario: String,
 }
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Story {
+    scenario: String,
+}
 fn default_scenario() -> String {
     "root_split".into()
 }
@@ -111,6 +116,12 @@ fn body<T: serde::de::DeserializeOwned>(request: &mut Request) -> Result<T> {
     request.as_reader().take(131073).read_to_end(&mut bytes)?;
     if bytes.len() > 131072 {
         return Err(Error::new("invalid_request", "Request exceeds 128 KB."));
+    }
+    if bytes.iter().find(|byte| !byte.is_ascii_whitespace()) != Some(&b'{') {
+        return Err(Error::new(
+            "invalid_request",
+            "Commands require a JSON object.",
+        ));
     }
     serde_json::from_slice(&bytes)
         .map_err(|_| Error::new("invalid_request", "Invalid command JSON."))
@@ -190,6 +201,16 @@ fn api(request: &mut Request, state: &mut State) -> Result<Value> {
             Ok(
                 json!({"lab":crate::lab::run(&directory,&input.boundary,&input.scenario)?,"snapshot":state.snapshot(page)?}),
             )
+        }
+        (&Method::Post, "/api/story") => {
+            let input: Story = body(request)?;
+            let directory = state
+                .path
+                .parent()
+                .unwrap_or(Path::new("."))
+                .join("recorded-stories");
+            let story = crate::story::run(&directory, &input.scenario)?;
+            Ok(json!({"story":story,"snapshot":state.snapshot(page)?}))
         }
         _ => Err(Error::new("not_found", "Unknown API route or method.")),
     }

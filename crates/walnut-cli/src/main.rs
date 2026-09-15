@@ -1,5 +1,6 @@
 mod lab;
 mod server;
+mod story;
 mod workload;
 use std::{env, path::Path};
 use walnut_core::{Error, Result, WriteOp, create_file, open_file, upgrade_file};
@@ -105,17 +106,23 @@ fn run(args: &[String]) -> Result<()> {
         [command, path, boundary, scenario] if command == "__crash-worker" => {
             lab::worker(Path::new(path), boundary, scenario)?
         }
+        [command, directory, scenario] if command == "story" => {
+            println!("{}", story::run(Path::new(directory), scenario)?);
+        }
+        [command, path] if command == "__story-crash-worker" => {
+            story::worker(Path::new(path))?;
+        }
         [command, rest @ ..] if command == "serve" => {
             server::serve(rest)?;
         }
         [command] if command == "--version" => println!(
-            "WALnut {} (storage format 3, page format 2, phase 3)",
+            "WALnut {} (storage format 3, page format 2, phase 4)",
             env!("CARGO_PKG_VERSION")
         ),
         _ => {
             return Err(Error::new(
                 "usage",
-                "walnut create <file> | put <file> <key> <value> | batch <file> <json-array> | get <file> <key> | range <file> <start> [--end <exclusive-key>] [--limit <1–256>] | inspect <file> [page-id] | grow <file> | checkpoint <file> | upgrade <source> <new-target> | lab <directory> <boundary> [leaf_split|root_split] | serve <file> [--port 7878] [--ui dist]",
+                "walnut create <file> | put <file> <key> <value> | batch <file> <json-array> | get <file> <key> | range <file> <start> [--end <exclusive-key>] [--limit <1–256>] | inspect <file> [page-id] | grow <file> | checkpoint <file> | upgrade <source> <new-target> | lab <directory> <boundary> [leaf_split|root_split] | story <directory> <split|recovery|checkpoint> | serve <file> [--port 7878] [--ui dist]",
             ));
         }
     }

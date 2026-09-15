@@ -83,6 +83,49 @@ export interface CommandResponse {
   result?: CommandResult;
   lab?: LabResult;
   range?: RangeResult;
+  story?: RecordedStory;
+}
+
+export type StoryScenario = "split" | "recovery" | "checkpoint";
+export type CapturedPage = Pick<
+  Snapshot,
+  | "page_id"
+  | "page_kind"
+  | "page_generation"
+  | "used_bytes"
+  | "checksum"
+  | "records"
+  | "bytes"
+  | "checkpoint_bytes"
+>;
+export interface StoryFrame {
+  id: string;
+  kind: string;
+  title: string;
+  explanation: string;
+  command: string;
+  focus_page_id: number;
+  capture: { snapshot: Snapshot; pages: CapturedPage[] };
+}
+export interface RecordedStory {
+  schema_version: number;
+  run_id: string;
+  scenario: StoryScenario;
+  title: string;
+  source: {
+    engine_version: string;
+    storage_format_version: number;
+    page_format_version: number;
+    database_path: string;
+    workload: { key: string; value: string }[];
+    failure_model: "none" | "process_termination";
+  };
+  frames: StoryFrame[];
+  process?: {
+    process_id: number;
+    process_terminated: boolean;
+    process_exit: string;
+  } | null;
 }
 export interface WalFrame {
   generation: number;
