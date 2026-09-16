@@ -93,6 +93,10 @@ const destination = resolve(root, "dist-demo");
 mkdirSync(destination, { recursive: true });
 writeFileSync(resolve(destination, "index.html"), html);
 writeFileSync(
+  resolve(destination, "walnut-demo.webm"),
+  readFileSync(resolve(root, "docs/media/walnut-demo.webm")),
+);
+writeFileSync(
   resolve(destination, "recordings.json"),
   `${JSON.stringify(bundle, null, 2)}\n`,
 );
@@ -104,6 +108,7 @@ writeFileSync(
 const manifest = { schema_version: 1, source: bundle.source, files: {} };
 for (const name of [
   "index.html",
+  "walnut-demo.webm",
   "recordings.json",
   "THIRD-PARTY-NOTICES.txt",
   "LICENSE",

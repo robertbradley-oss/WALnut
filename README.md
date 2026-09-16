@@ -9,9 +9,9 @@
 
 Follow two writes through a B+ tree split, a committed write-ahead log, and recovery after process termination. WALnut is a Rust key/value database with a live inspector and a portable replay of real engine runs. Every page, log entry, and hex byte comes from the engine.
 
-[![A committed page split: the operation bar names the generation change and the new root, the B+ tree shows one leaf becoming two, and the durability rail shows the log holding one transaction the main file does not have](docs/media/walnut-demo.png)](docs/media/walnut-demo.webm)
+[![A committed page split: the operation bar names the generation change and the new root, the B+ tree shows one leaf becoming two, and the durability rail shows the log holding one transaction the main file does not have](docs/media/walnut-demo.png)](https://robertbradley-oss.github.io/WALnut/walnut-demo.webm)
 
-**[Explore the browser demo](https://robertbradley-oss.github.io/WALnut/)** · [Watch the 30-second recording](docs/media/walnut-demo.webm) · [Engineering case study](docs/case-study.md) · [Measured performance](docs/performance.md)
+**[Explore the browser demo](https://robertbradley-oss.github.io/WALnut/)** · [Watch the 30-second recording](https://robertbradley-oss.github.io/WALnut/walnut-demo.webm) · [Engineering case study](docs/case-study.md) · [Measured performance](docs/performance.md)
 
 Every screen answers four questions: what operation you are looking at, what it changed, what is durable right now, and what you can inspect next.
 

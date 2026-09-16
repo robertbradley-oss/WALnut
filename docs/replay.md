@@ -36,3 +36,8 @@ The embedded bundle and `manifest.json` identify the package version, Git revisi
 `npm run record:demo` records the actual standalone UI and trims it to 30 seconds. It uses the Chromium/FFmpeg installation from `npm run browser:install`; `FFMPEG` can select a compatible executable. Outputs are `docs/media/walnut-demo.webm` and the PNG poster. The recording shows staging/split, process termination/recovery, checkpoint, and byte inspection. It contains no synthetic state or added animation frames.
 
 The shared viewer styles also serve the live inspector. Phase 6 corrected the tablet inspector's grid sizing so long stored values cannot expand the outer page width.
+
+The export also copies the committed walkthrough video to `dist-demo/walnut-demo.webm`
+and includes its hash in the manifest. The hosted README links to that file so a
+browser can play it directly. Regenerate the video with `npm run record:demo`, then
+commit the refreshed media and run `npm run build:demo` before release packaging.

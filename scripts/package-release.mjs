@@ -40,6 +40,9 @@ const directory = resolve(root, "release", `${base}-${revision.slice(0, 8)}`);
 mkdirSync(directory, { recursive: true });
 const artifacts = {
   [`${base}-demo.html`]: readFileSync(resolve(root, "dist-demo/index.html")),
+  [`${base}-demo.webm`]: readFileSync(
+    resolve(root, "dist-demo/walnut-demo.webm"),
+  ),
   [`${base}-recordings.json`]: readFileSync(
     resolve(root, "dist-demo/recordings.json"),
   ),

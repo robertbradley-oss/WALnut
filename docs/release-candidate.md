@@ -36,7 +36,9 @@ installation and build target. Clean-source release packaging also passed.
 The clone reused the installed GNULLVM compiler and Chromium; this is not a
 clean-machine MSVC check. [Machine-readable results](measurements/release-windows.json)
 and [compressed command logs](measurements/release-windows.log.gz) retain the evidence.
-The release evidence added afterward changes documentation only.
+The release evidence added afterward changes documentation only. A subsequent
+presentation fix includes the existing walkthrough video in the export and release
+so the README opens a playable hosted video; it does not change the engine or UI.
 
 This table reports local Windows results. Hosted Windows/Linux results are
 available in the [verification workflow runs](https://github.com/robertbradley-oss/WALnut/actions/workflows/ci.yml).

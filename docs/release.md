@@ -19,6 +19,7 @@ npm run release:prepare
 Packaging requires a clean Git checkout and a demo generated from that exact revision. If changes were committed after export, run `npm run build:demo` again. The packager verifies export sizes and hashes before writing `release/walnut-<version>-<revision>/`:
 
 - `walnut-<version>-demo.html`: directly openable, complete recorded viewer.
+- `walnut-<version>-demo.webm`: the 30-second walkthrough video.
 - `walnut-<version>-recordings.json`: readable evidence behind the viewer.
 - `walnut-<version>-source.zip`: tracked source and documentation from the recorded revision.
 - `LICENSE` and `THIRD-PARTY-NOTICES.txt`: project and embedded runtime/font notices.
