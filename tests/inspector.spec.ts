@@ -354,6 +354,121 @@ test("writes real bytes, reads a value, and preserves it across file reopen", as
   ).toBe("from the inside 🌰");
 });
 
+test("one-click split preserves live staging and links log, pages, records and bytes", async ({
+  page,
+  database,
+}, testInfo) => {
+  await page.goto(database.url);
+  await expect(engineStatus(page)).toHaveText("Engine connected");
+  await page
+    .getByRole("button", { name: "Stage in batch", exact: true })
+    .click();
+  await expect(page.getByTestId("staged-count")).toHaveText("1");
+  const before = await snapshot(page, database.url);
+  const response = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/story") &&
+      response.request().method() === "POST",
+  );
+  await page
+    .locator(".lab-header")
+    .getByRole("button", { name: "Watch a page split" })
+    .click();
+  const story: RecordedStory = (await (await response).json()).story;
+  await expect(page.locator(".player-state")).toContainText("PLAYING");
+  await page.getByRole("button", { name: /^Step 3:/ }).click();
+  const state = story.frames[2].capture.snapshot;
+  const log = state.wal_frames.at(-1)!;
+  const delta = page.getByLabel("Changes since previous operation");
+  await expect(delta).toContainText("Records +2");
+  await expect(delta).toContainText("Pages +2");
+  await expect(delta).toContainText("Gen 1 → 2");
+  await expect(page.locator(".canvas-page[data-recent]")).toHaveCount(3);
+  await expect(page.locator(".canvas-page[data-recent]")).toHaveCount(0);
+
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST") writes.push(request.url());
+  });
+  await page
+    .getByRole("button", {
+      name: `Transaction generation ${log.generation}, 2 puts, committed and ahead of the main file`,
+    })
+    .click();
+  await expect(page.getByLabel("Linked selection")).toContainText(
+    `WAL gen ${log.generation}`,
+  );
+  expect(
+    await page
+      .locator(".canvas-page[data-log]")
+      .evaluateAll((nodes) =>
+        nodes.map((node) => Number(node.getAttribute("data-page-id"))).sort(),
+      ),
+  ).toEqual(log.page_ids.filter((id) => id !== 0).sort());
+  await expect(page.locator(".rail-detail")).toHaveAttribute("open", "");
+  await page
+    .getByRole("button", { name: "Inspect leaf page 2", exact: true })
+    .click();
+  await expect(page.locator(".canvas-page[data-log]")).toHaveCount(0);
+  await expect(page.locator(".rail-frame[data-linked]")).toContainText("P002");
+  await expect(page.getByLabel("Page and log relationship")).toContainText(
+    `WAL gen ${log.generation}`,
+  );
+
+  const record = story.frames[2].capture.pages.find(
+    (page) => page.page_id === 2,
+  )!.records[0];
+  await page.locator(".inspect-record").first().focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByLabel("Selected record bytes")).toContainText(
+    `bytes ${record.offset}–${record.offset + record.length - 1}`,
+  );
+  await expect(page.getByLabel("Linked selection")).toContainText("Record");
+  await page.getByRole("button", { name: "Show selected bytes" }).click();
+  await expect(
+    page.getByRole("table", { name: "Encoded page bytes" }),
+  ).toBeVisible();
+  await expect(page.locator(".hex-table .key-byte")).toHaveCount(
+    record.key_length,
+  );
+  await page
+    .getByRole("button", { name: `WAL gen ${log.generation}`, exact: true })
+    .click();
+  await expect(page.getByLabel("Selected record bytes")).toContainText(
+    `bytes ${record.offset}`,
+  );
+  await page.getByRole("button", { name: /^Step 1:/ }).click();
+  await expect(page.locator(".canvas-page[data-log]")).toHaveCount(0);
+  expect(writes).toEqual([]);
+
+  for (const width of [1440, 1280, 1240, 900, 390, 375]) {
+    await page.setViewportSize({ width, height: 900 });
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+      )
+      .toBe(true);
+    await expect
+      .poll(() =>
+        page
+          .locator(".lab-metrics dd")
+          .evaluateAll((nodes) =>
+            nodes.every((node) => node.scrollWidth <= node.clientWidth),
+          ),
+      )
+      .toBe(true);
+  }
+  await captureReview(page, testInfo, "linked-split-narrow");
+  await page
+    .getByRole("button", { name: "Live database", exact: true })
+    .click();
+  await expect(page.getByTestId("staged-count")).toHaveText("1");
+  const after = await snapshot(page, database.url);
+  expect(after.staged).toEqual(before.staged);
+  expect(after.generation).toBe(before.generation);
+  expect(after.bytes).toEqual(before.bytes);
+});
+
 test("updates keep one record and missing lookups are explicit", async ({
   page,
   database,
@@ -367,6 +482,15 @@ test("updates keep one record and missing lookups are explicit", async ({
   await page.getByRole("button", { name: "Commit this put" }).click();
   await expect(page.getByTestId("generation")).toHaveText("02");
   await expect(page.getByTestId("record-count")).toHaveText("01");
+  await expect(
+    page.getByLabel("Changes since previous operation"),
+  ).toContainText("Records +0");
+  await expect(
+    page.getByLabel("Changes since previous operation"),
+  ).toContainText("Pages +0");
+  await expect(
+    page.getByLabel("Changes since previous operation"),
+  ).toContainText("Gen 1 → 2");
   await page.getByRole("button", { name: "GET Read" }).click();
   await page.getByRole("textbox", { name: "Key", exact: true }).fill("missing");
   await page.getByRole("button", { name: "Find this key" }).click();
@@ -491,7 +615,7 @@ test("narrow layout and reduced motion retain keyboard access", async ({
   ).toBeEnabled();
   expect(
     await page
-      .locator(".page-map rect")
+      .locator(".page-map .span-record")
       .first()
       .evaluate((el) => getComputedStyle(el).transitionDuration),
   ).toBe("0s");
@@ -533,6 +657,12 @@ test("stages two puts, hides them from reads, commits atomically, and checkpoint
   }
   await expect(page.getByTestId("staged-count")).toHaveText("2");
   await expect(page.getByTestId("record-count")).toHaveText("00");
+  // The operation bar names the state the database is actually in.
+  const operation = page.getByRole("region", { name: "Current operation" });
+  await expect(operation).toHaveAttribute("data-tone", "staged");
+  await expect(page.getByTestId("operation-headline")).toHaveText(
+    "2 puts held in memory. Reads still see generation 0.",
+  );
   await expect(
     page.getByRole("button", { name: "Commit this put" }),
   ).toBeDisabled();
@@ -542,13 +672,25 @@ test("stages two puts, hides them from reads, commits atomically, and checkpoint
   await page.getByRole("button", { name: "Commit batch", exact: true }).click();
   await expect(page.getByTestId("generation")).toHaveText("01");
   await expect(page.getByTestId("record-count")).toHaveText("02");
+  await expect(operation).toHaveAttribute("data-tone", "committed");
+  await expect(page.getByTestId("operation-headline")).toHaveText(
+    "Committed 2 puts into P001.",
+  );
+  await expect(operation).toContainText("0 → 1");
+  await expect(
+    page.getByRole("heading", {
+      name: "The log holds 1 transaction the main file does not have.",
+    }),
+  ).toBeVisible();
   await expect(
     page.getByRole("textbox", { name: "Key", exact: true }),
   ).toBeFocused();
   await expect(page.getByTestId("staged-count")).toHaveText("0");
   await expect(page.getByTestId("checkpoint-generation")).toHaveText("0");
   await expect(
-    page.getByRole("button", { name: "GEN 01 2 puts COMMITTED" }),
+    page.getByRole("button", {
+      name: "Transaction generation 1, 2 puts, committed and ahead of the main file",
+    }),
   ).toBeVisible();
   await revealBytes(page);
   await page.getByRole("button", { name: "Checkpoint page · gen 0" }).click();
@@ -572,6 +714,15 @@ test("stages two puts, hides them from reads, commits atomically, and checkpoint
   await page.getByRole("button", { name: "Checkpoint", exact: true }).click();
   await expect(page.getByTestId("checkpoint-generation")).toHaveText("1");
   await expect(page.getByTestId("wal-bytes")).toHaveText("64 B on disk");
+  await expect(operation).toHaveAttribute("data-tone", "checkpointed");
+  await expect(page.getByTestId("operation-headline")).toHaveText(
+    "Generation 1 is now in the main file. The log is back to its 64-byte identity header.",
+  );
+  await expect(
+    page.getByRole("heading", {
+      name: "The main file matches the last commit.",
+    }),
+  ).toBeVisible();
   const snapshot = await (
     await page.request.get(`${database.url}/api/snapshot`)
   ).json();
@@ -789,9 +940,21 @@ test("grows a three-level tree, follows a lookup, inspects routing and scans lin
   await expect(
     page.getByRole("navigation", { name: "Tree ancestry" }).getByRole("button"),
   ).toHaveCount(2);
-  await page.getByRole("button", { name: "Next child pages" }).click();
-  await expect(page.locator(".canvas-pagination")).toContainText(
-    "Children 4–6",
+  // Every allocated page is represented in the map, and the level elision
+  // chips walk to the pages the stage cannot draw at this width.
+  await expect(page.locator(".page-map-cell")).toHaveCount(state.page_count);
+  const forward = page.locator(".structure-more").last();
+  const jump = /open P0*(\d+)/.exec(
+    (await forward.getAttribute("aria-label")) ?? "",
+  );
+  expect(jump).not.toBeNull();
+  await forward.click();
+  await expect(
+    page.getByRole("combobox", { name: "PAGE EXPLORER", exact: true }),
+  ).toHaveValue(jump![1]);
+  await expect(page.locator(".structure-more").first()).toHaveAttribute(
+    "aria-label",
+    /earlier level 0/,
   );
   expect(errors).toEqual([]);
 });
@@ -903,7 +1066,7 @@ for (const scenario of [
       page.getByRole("region", { name: "Recorded playback" }),
     ).toHaveCount(0);
     if (scenario.id === "split")
-      await captureReview(page, testInfo, "orientation-desktop");
+      await captureReview(page, testInfo, "experiments-desktop");
     const story = await runStory(page, scenario.title);
     expect(story.scenario).toBe(scenario.id);
     expect(story.source.database_path).not.toBe(database.path);
@@ -1053,16 +1216,20 @@ test("recorded playback keeps keyboard, timing, zoom and byte inspection availab
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(database.url);
   await expect(
-    page.getByRole("button", { name: /^Guided stories/ }),
+    page.getByRole("button", { name: "Live database", exact: true }),
   ).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    page.getByRole("button", { name: "Commit this put" }),
+  ).toBeVisible();
+  await captureReview(page, testInfo, "workbench-mobile");
+  await page.getByRole("button", { name: /^Guided stories/ }).click();
   await expect(
     page.getByRole("region", { name: "Recorded playback" }),
   ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Commit this put" }),
   ).toHaveCount(0);
-  await captureReview(page, testInfo, "orientation-mobile");
-  await page.getByRole("button", { name: /^Guided stories/ }).click();
+  await captureReview(page, testInfo, "experiments-mobile");
   const story = await runStory(page, "A page splits");
   const playback = page.getByRole("region", { name: "Recorded playback" });
   const first = playback.getByRole("button", {

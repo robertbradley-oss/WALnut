@@ -1,0 +1,229 @@
+/*
+ * WALnut design tokens.
+ *
+ * Colour carries meaning here. Five state hues describe where data lives and
+ * what has happened to it; everything else is a neutral surface so those hues
+ * are the only saturated thing on screen.
+ *
+ *   staged       amber   held in memory, not durable, invisible to reads
+ *   committed    green   synced and verified in the write-ahead log
+ *   checkpointed blue    at rest in the main database file
+ *   selected     cyan    the page, record or route you are inspecting
+ *   failed       red     a stopped process, a rejected command, a broken file
+ */
+@import "@fontsource-variable/manrope";
+@import "@fontsource-variable/jetbrains-mono";
+
+:root {
+  color-scheme: dark;
+
+  --bg-void: #06070a;
+  --bg-page: #090b0f;
+  --bg-panel: #0e1116;
+  --bg-raised: #141821;
+  --bg-sunken: #070810;
+  --bg-input: #191e28;
+  --bg-hover: #1d2330;
+
+  --line: #222834;
+  --line-strong: #46546a;
+  --line-faint: #171c25;
+
+  --ink: #eef1f7;
+  --ink-dim: #b6c0d1;
+  --ink-faint: #9ba8bd;
+  --ink-ghost: #8997ad;
+
+  --staged: #f0a93c;
+  --staged-soft: #f0a93c26;
+  --staged-line: #f0a93c55;
+
+  --committed: #35d38a;
+  --committed-soft: #35d38a22;
+  --committed-line: #35d38a55;
+
+  --checkpointed: #6e9bf5;
+  --checkpointed-soft: #6e9bf522;
+  --checkpointed-line: #6e9bf555;
+
+  --selected: #3ed2e8;
+  --selected-soft: #3ed2e822;
+  --selected-line: #3ed2e866;
+
+  --failed: #f2565f;
+  --failed-soft: #f2565f22;
+  --failed-line: #f2565f55;
+
+  --mono:
+    "JetBrains Mono Variable", ui-monospace, "SF Mono", "Cascadia Mono", Menlo,
+    monospace;
+  --sans:
+    "Manrope Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+
+  --r-sm: 3px;
+  --r: 5px;
+  --r-lg: 8px;
+
+  --shadow-lift: 0 1px 0 #ffffff0a inset, 0 8px 24px -12px #000000cc;
+  --shadow-pop: 0 12px 40px -16px #000000ee;
+
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --move: 380ms;
+  --quick: 150ms;
+
+  --rail: 250px;
+  --inspect: 310px;
+  --gap: 14px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg-void);
+  /* The header is sticky; keep anchored targets clear of it. */
+  scroll-padding-top: 66px;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 700;
+  letter-spacing: -0.021em;
+  line-height: 1.15;
+}
+
+p {
+  margin: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+:focus-visible {
+  outline: 2px solid var(--selected);
+  outline-offset: 2px;
+  border-radius: var(--r-sm);
+}
+
+::selection {
+  background: var(--selected-soft);
+  color: var(--ink);
+}
+
+/* Small mono labels above a block of data. */
+.kicker {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "zero" 1;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.skip-link {
+  position: absolute;
+  left: 12px;
+  top: -60px;
+  z-index: 60;
+  padding: 10px 16px;
+  background: var(--selected);
+  color: #04141a;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: var(--r);
+  text-decoration: none;
+  transition: top var(--quick) var(--ease);
+}
+
+.skip-link:focus {
+  top: 12px;
+}
+
+/* Scrollbars read as part of the instrument rather than the OS. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 99px;
+  border: 2px solid var(--bg-page);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--ink-ghost);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}

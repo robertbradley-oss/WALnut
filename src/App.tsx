@@ -5,18 +5,28 @@ import type {
   RecordedStory,
   Snapshot,
   StoryScenario,
+  WalFrame,
 } from "./types";
-import { CommandPanel, type LiveCommand } from "./CommandPanel";
-import { TreeCanvas } from "./TreeCanvas";
-import { PageInspector } from "./PageInspector";
-import { Journal } from "./Journal";
+import { Console, type LiveCommand } from "./Console";
+import { Structure } from "./Structure";
+import { Inspector } from "./Inspector";
+import { DurabilityRail } from "./DurabilityRail";
 import { RecoveryLab } from "./RecoveryLab";
-import { StoryGuide, StoryPlayer } from "./StoryPlayer";
-import { Orientation } from "./Orientation";
+import { Experiments } from "./Experiments";
+import { RecordedTimeline, EventTimeline } from "./Timeline";
+import {
+  OperationBar,
+  describeFrame,
+  describeOperation,
+  withChanges,
+  type Operation,
+} from "./OperationBar";
+import { operationId, useLogSelection } from "./inspection";
+import { Brand, brandMark } from "./Brand";
 import { validateSnapshot, validateStory } from "./protocol";
 import { timed } from "./timing";
+import "./lab.css";
 import "./recovery.css";
-import "./workbench.css";
 
 class EngineError extends Error {
   constructor(
@@ -26,6 +36,7 @@ class EngineError extends Error {
     super(message);
   }
 }
+
 async function request<T>(path: string, body?: unknown): Promise<T> {
   let response: Response;
   try {
@@ -62,22 +73,40 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
     );
   return data as T;
 }
+
 const message = (error: unknown) =>
   error instanceof Error ? error.message : "The command could not complete.";
 const pad = (value?: number) =>
   value == null ? "—" : String(value).padStart(2, "0");
 
+const waitingOperation: Operation = {
+  command: "connect",
+  headline: "Waiting for the engine.",
+  tone: "neutral",
+  facts: [],
+};
+
+const noRecording: Operation = {
+  command: "select",
+  headline: "Choose an experiment and run it.",
+  tone: "neutral",
+  facts: [],
+  evidence:
+    "Each run drives the real engine against its own disposable database and captures a snapshot after every observable operation.",
+};
+
 export default function App() {
   const [live, setLive] = useState<Snapshot | null>(null);
+  const [previousLive, setPreviousLive] = useState<Snapshot | null>(null);
   const [connected, setConnected] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [lagging, setLagging] = useState(false);
   const [missedEvents, setMissedEvents] = useState(0);
   const [busy, setBusy] = useState(false);
   const [mode, setMode] = useState<"live" | "replay">(() =>
-    new URLSearchParams(window.location.search).get("mode") === "live"
-      ? "live"
-      : "replay",
+    new URLSearchParams(window.location.search).get("mode") === "replay"
+      ? "replay"
+      : "live",
   );
   const [selectedKey, setSelectedKey] = useState("");
   const [notice, setNotice] = useState("");
@@ -127,6 +156,18 @@ export default function App() {
       setConnectionError(message(error));
       throw new EngineError(message(error));
     }
+    const previous = lastAccepted.current;
+    if (!previous || operationId(previous) !== operationId(snapshot)) {
+      setPreviousLive(
+        previous &&
+          previous.database_id === snapshot.database_id &&
+          previous.session_id === snapshot.session_id &&
+          (previous.events.at(-1)?.operation ?? -2) + 1 ===
+            snapshot.events.at(-1)?.operation
+          ? previous
+          : null,
+      );
+    }
     setLive(snapshot);
     lastAccepted.current = snapshot;
     livePage.current = snapshot.page_id;
@@ -134,6 +175,7 @@ export default function App() {
     setConnectionError("");
     setLagging(false);
   }, []);
+
   const refresh = useCallback(async () => {
     if (busyRef.current || polling.current) return;
     polling.current = true;
@@ -167,6 +209,7 @@ export default function App() {
       polling.current = false;
     }
   }, [accept]);
+
   useEffect(() => {
     void refresh();
     const timer = setInterval(() => void refresh(), 1500);
@@ -175,6 +218,7 @@ export default function App() {
       requestEpoch.current++;
     };
   }, [refresh]);
+
   const begin = () => {
     busyRef.current = true;
     requestEpoch.current++;
@@ -200,6 +244,7 @@ export default function App() {
       return;
     begin();
     setNotice("");
+    selectLogFrame(undefined);
     setCommandError("");
     try {
       const response = await request<CommandResponse>(
@@ -226,13 +271,9 @@ export default function App() {
           setNotice("Command completed. Select its page to retry inspection.");
         }
       }
-      if (kind === "checkpoint")
-        setNotice(
-          "Checkpoint complete. Main pages synced; WAL reset and synced.",
-        );
       if (kind === "grow")
         setNotice(
-          "64 sample records committed. Select a branch to follow the new pages.",
+          "64 sample records committed. Walk the page map to follow the new pages.",
         );
       return response;
     } catch (error) {
@@ -242,6 +283,7 @@ export default function App() {
       finish();
     }
   };
+
   const globalCommand = async (kind: LiveCommand) => {
     try {
       await execute(kind);
@@ -250,8 +292,10 @@ export default function App() {
       setCommandError(message(error));
     }
   };
+
   const selectPage = async (id: number, key = "") => {
     if (busyRef.current) return;
+    selectLogFrame(undefined);
     setPlaying(false);
     setSelectedKey(key);
     if (mode === "replay") {
@@ -270,6 +314,7 @@ export default function App() {
       finish();
     }
   };
+
   const seek = (next: number) => {
     if (!story) return;
     const bounded = Math.max(0, Math.min(next, story.frames.length - 1));
@@ -278,6 +323,7 @@ export default function App() {
     setRecordedPage(story.frames[bounded].focus_page_id);
     setSelectedKey("");
   };
+
   useEffect(() => {
     if (!playing || mode !== "replay" || !story || busy) return;
     if (index >= story.frames.length - 1) {
@@ -292,6 +338,7 @@ export default function App() {
     }, 2400 / speed);
     return () => clearTimeout(timer);
   }, [playing, mode, story, busy, index, speed]);
+
   useEffect(() => {
     const pause = () => {
       if (document.hidden) setPlaying(false);
@@ -299,20 +346,27 @@ export default function App() {
     document.addEventListener("visibilitychange", pause);
     return () => document.removeEventListener("visibilitychange", pause);
   }, []);
+
   const switchMode = (next: "live" | "replay") => {
     if (busyRef.current) return;
     setMode(next);
+    selectLogFrame(undefined);
     setPlaying(false);
     setSelectedKey("");
     setCommandError("");
     setNotice("");
     if (next === "live") void refresh();
   };
-  const runStory = async (selectedScenario: StoryScenario = scenario) => {
+
+  const runStory = async (
+    selectedScenario: StoryScenario = scenario,
+    autoplay = false,
+  ) => {
     if (busyRef.current || !available) return;
     begin();
     setStoryRunning(true);
     setStoryError("");
+    setScenario(selectedScenario);
     try {
       const response = await request<CommandResponse>(
         `story?page=${livePage.current}`,
@@ -326,6 +380,7 @@ export default function App() {
       setIndex(0);
       setRecordedPage(recording.frames[0].focus_page_id);
       setSelectedKey("");
+      setPlaying(autoplay);
     } catch (error) {
       noteUnavailable(error);
       setStoryError(message(error));
@@ -334,7 +389,15 @@ export default function App() {
       setStoryRunning(false);
     }
   };
-  const runLab = async (boundary: string, scenario: string) => {
+
+  const watchSplit = () => {
+    if (busyRef.current || !available) return;
+    switchMode("replay");
+    void runStory("split", true);
+    document.getElementById("workspace")?.scrollIntoView({ block: "start" });
+  };
+
+  const runLab = async (boundary: string, labScenario: string) => {
     if (busyRef.current || !available) return;
     begin();
     setLabRunning(true);
@@ -342,7 +405,7 @@ export default function App() {
     try {
       const response = await request<CommandResponse>(
         `lab?page=${livePage.current}`,
-        { boundary, scenario },
+        { boundary, scenario: labScenario },
       );
       if (response.lab) validateSnapshot(response.lab.snapshot);
       accept(response.snapshot);
@@ -355,6 +418,7 @@ export default function App() {
       setLabRunning(false);
     }
   };
+
   const frame = story?.frames[index];
   const captured =
     frame?.capture.pages.find((page) => page.page_id === recordedPage) ??
@@ -366,21 +430,55 @@ export default function App() {
         ? { ...frame.capture.snapshot, ...captured }
         : null;
   const snapshotDisabled = busy || (mode === "live" && !available);
+  const recorded = mode === "replay";
+  const stopped = frame?.kind === "crashed";
+  const { frame: selectedLog, selectFrame: selectLogFrame } = useLogSelection(
+    snapshot,
+    recorded
+      ? `${story?.run_id}:${frame?.id}`
+      : live
+        ? operationId(live)
+        : "waiting",
+  );
+  const chooseLog = (transaction: WalFrame) => {
+    if (snapshotDisabled || !snapshot) return;
+    const id = transaction.page_ids.includes(snapshot.page_id)
+      ? snapshot.page_id
+      : (transaction.page_ids.find((id) => id !== 0) ?? 0);
+    void selectPage(id, id === snapshot.page_id ? selectedKey : "");
+    selectLogFrame(transaction);
+  };
+  const operation = snapshot
+    ? recorded && frame
+      ? withChanges(
+          describeFrame(frame),
+          snapshot,
+          story?.frames[index - 1]?.capture.snapshot,
+        )
+      : withChanges(describeOperation(snapshot), snapshot, previousLive)
+    : recorded
+      ? noRecording
+      : waitingOperation;
 
   return (
-    <div className="workbench">
+    <div className="lab">
       <a className="skip-link" href="#workspace">
         Skip to workspace
       </a>
-      <header className="work-header">
-        <a className="work-brand" href="/" aria-label="WALnut home">
-          <img src="/walnut.svg" alt="" />
-          <span>
-            WAL<span>nut</span>
-          </span>
-        </a>
-        <span className="work-tagline">A database, from the inside.</span>
-        <div className="work-connection">
+
+      <header className="lab-header">
+        <Brand href="/" label="WALnut home" />
+        <span className="lab-tagline">A database with its internals open.</span>
+        <div className="lab-status-chip">
+          <button
+            className="watch-split"
+            disabled={busy || !available}
+            onClick={watchSplit}
+            title="Play a captured engine run in its own disposable database"
+          >
+            {storyRunning ? "Capturing…" : "Watch a page split"}{" "}
+            <span aria-hidden="true">↗</span>
+          </button>
           <span className={available ? "is-connected" : ""} role="status">
             {connected
               ? lagging
@@ -390,12 +488,13 @@ export default function App() {
                 ? "Engine offline"
                 : "Connecting to engine…"}
           </span>
-          <span className="work-version">RUST / B+ TREE</span>
+          <span className="lab-stack">RUST · B+ TREE · WAL</span>
         </div>
       </header>
+
       <main id="workspace">
-        <div className="work-toolbar">
-          <div className="work-modes" role="group" aria-label="Workspace mode">
+        <div className="lab-strip">
+          <div className="lab-modes" role="group" aria-label="Workspace mode">
             <button
               aria-pressed={mode === "live"}
               disabled={busy}
@@ -408,32 +507,67 @@ export default function App() {
               disabled={busy}
               onClick={() => switchMode("replay")}
             >
-              Guided stories <span>03</span>
+              Guided stories <em>03</em>
             </button>
           </div>
-          <div className="work-context">
-            <span className={`mode-indicator ${mode}`}>
-              {mode === "live" ? "LIVE" : story ? "RECORDED" : "GUIDED"}
-            </span>
-            <span title={snapshot?.database_name}>
+          <div className="lab-identity">
+            <strong title={snapshot?.database_name}>
               {mode === "live"
                 ? (live?.database_name ?? "Waiting for engine")
                 : (story?.title ?? "Choose an experiment")}
-            </span>
+            </strong>
+            <small>
+              {mode === "live"
+                ? "Owned by one engine process · serialized commands"
+                : story
+                  ? `Recorded run ${story.run_id.slice(0, 12)}`
+                  : "Captured engine runs · read only"}
+            </small>
           </div>
-          {mode === "live" && (
-            <button
-              className="work-grow"
-              disabled={busy || !available || !!live?.staged.length}
-              onClick={() => void globalCommand("grow")}
-              aria-label="Insert 64 sample records"
-            >
-              + 64 sample records
-            </button>
-          )}
+          <dl
+            className="lab-metrics"
+            aria-label={
+              mode === "live"
+                ? "Live database statistics"
+                : "Recorded frame statistics"
+            }
+          >
+            <div>
+              <dt>Records</dt>
+              <dd data-testid="record-count">{pad(snapshot?.record_count)}</dd>
+            </div>
+            <div>
+              <dt>Node pages</dt>
+              <dd data-testid="page-count">{pad(snapshot?.page_count)}</dd>
+            </div>
+            <div>
+              <dt>Height</dt>
+              <dd data-testid="tree-height">
+                {snapshot ? (
+                  <>
+                    {snapshot.tree_height}{" "}
+                    <em>{snapshot.tree_height === 1 ? "level" : "levels"}</em>
+                  </>
+                ) : (
+                  "—"
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>Root</dt>
+              <dd data-testid="root-page">
+                {snapshot ? `P${snapshot.root_page_id}` : "—"}
+              </dd>
+            </div>
+            <div>
+              <dt>Generation</dt>
+              <dd data-testid="generation">{pad(snapshot?.generation)}</dd>
+            </div>
+          </dl>
         </div>
+
         {connectionError && (
-          <div className="work-offline" role="alert">
+          <div className="lab-alert" role="alert">
             <div>
               <strong>Engine offline.</strong>{" "}
               {live
@@ -449,7 +583,7 @@ export default function App() {
           </div>
         )}
         {lagging && !connectionError && (
-          <div className="work-offline" role="status">
+          <div className="lab-alert" data-kind="waiting" role="status">
             <div>
               <strong>Waiting for the engine.</strong> The snapshot request is
               taking longer than usual.
@@ -462,126 +596,133 @@ export default function App() {
             </div>
           </div>
         )}
-        <div
-          className={`work-metrics ${mode === "replay" && !snapshot ? "is-empty" : ""}`}
-          aria-label={
-            mode === "live"
-              ? "Live database statistics"
-              : "Recorded frame statistics"
+
+        <OperationBar
+          operation={operation}
+          label={recorded ? "Current story step" : "Current operation"}
+          badge={recorded ? "RECORDED" : "LIVE"}
+          badgeTone={
+            recorded ? (stopped ? "failed" : "checkpointed") : "committed"
+          }
+          badgeNote={
+            recorded
+              ? !story
+                ? "no recording yet"
+                : stopped
+                  ? "process terminated"
+                  : `step ${index + 1} of ${story.frames.length}`
+              : available
+                ? "engine attached"
+                : "no engine"
+          }
+          notice={
+            stopped ? (
+              <>
+                <strong className="story-stopped">
+                  Process stopped · last captured state
+                </strong>
+                {story?.process && (
+                  <small className="story-process">
+                    Child PID {story.process.process_id} ·{" "}
+                    {story.process.process_terminated
+                      ? "terminated and reaped"
+                      : "exit not confirmed"}
+                  </small>
+                )}
+              </>
+            ) : null
           }
         >
-          <div>
-            <span>RECORDS</span>
-            <strong data-testid="record-count">
-              {pad(snapshot?.record_count)}
-            </strong>
-          </div>
-          <div>
-            <span>NODE PAGES</span>
-            <strong data-testid="page-count">
-              {pad(snapshot?.page_count)}
-            </strong>
-          </div>
-          <div>
-            <span>TREE HEIGHT</span>
-            <strong data-testid="tree-height">
-              {snapshot
-                ? `${snapshot.tree_height} ${snapshot.tree_height === 1 ? "level" : "levels"}`
-                : "—"}
-            </strong>
-          </div>
-          <div>
-            <span>ROOT</span>
-            <strong data-testid="root-page">
-              {snapshot ? `P${snapshot.root_page_id}` : "—"}
-            </strong>
-          </div>
-          <div>
-            <span>GENERATION</span>
-            <strong data-testid="generation">
-              {pad(snapshot?.generation)}
-            </strong>
-          </div>
-          <div className="work-metric-note">
-            {mode === "live" ? (
-              <>
-                <b>Every page is real.</b>
-                <span>4,096 bytes · inspect any node</span>
-              </>
-            ) : (
-              <>
-                <b>
-                  {frame?.kind === "crashed"
-                    ? "Process stopped."
-                    : "Every step is captured."}
-                </b>
-                <span>
-                  {frame?.kind === "crashed"
-                    ? "Holding its last verified snapshot"
-                    : "Explore without changing the live database"}
-                </span>
-              </>
-            )}
-          </div>
-        </div>
+          {!recorded && live && (
+            <NextAction
+              snapshot={live}
+              disabled={snapshotDisabled}
+              onCheckpoint={() => void globalCommand("checkpoint")}
+              onCommit={() => void globalCommand("commit")}
+              onExperiments={() => switchMode("replay")}
+            />
+          )}
+          {recorded && story && (
+            <button disabled={busy} onClick={() => switchMode("live")}>
+              Try it on the live database <i aria-hidden="true">→</i>
+            </button>
+          )}
+        </OperationBar>
+
         {(notice || commandError) && mode === "live" && (
           <p
-            className={`work-notice ${commandError ? "work-error" : ""}`}
+            className="lab-notice"
+            data-kind={commandError ? "error" : undefined}
             role={commandError ? "alert" : undefined}
             aria-live="polite"
           >
             {commandError || notice}
           </p>
         )}
-        <div className="work-grid">
-          {mode === "live" ? (
-            <CommandPanel
-              snapshot={live}
-              busy={busy}
-              connected={connected}
-              waiting={lagging}
-              onCommand={execute}
-              onSelectPage={(id, key) => void selectPage(id, key)}
-            />
-          ) : (
-            <StoryGuide
-              story={story}
-              frame={frame}
-              index={index}
-              scenario={scenario}
-              setScenario={(value) => {
-                setScenario(value);
-                setPlaying(false);
-                setStoryError("");
-              }}
-              run={() => void runStory()}
-              busy={storyRunning}
-              connected={available}
-              error={storyError}
-            />
-          )}
-          <div
-            className={`work-center ${mode === "replay" && !snapshot ? "is-orientation" : ""}`}
-          >
-            {snapshot ? (
-              <TreeCanvas
-                snapshot={snapshot}
-                selectedPageId={snapshot.page_id}
-                onSelect={(id) => void selectPage(id)}
-                disabled={snapshotDisabled}
-                mode={mode}
-              />
-            ) : mode === "replay" ? (
-              <Orientation
-                disabled={busy || !available}
-                onStart={() => {
-                  setScenario("split");
-                  void runStory("split");
-                }}
+
+        <div className="lab-grid">
+          <div className="lab-rail">
+            {mode === "live" ? (
+              <Console
+                snapshot={live}
+                busy={busy}
+                connected={connected}
+                waiting={lagging}
+                onCommand={execute}
+                onSelectPage={(id, key) => void selectPage(id, key)}
               />
             ) : (
-              <section className="work-empty">
-                <div className="empty-tree" aria-hidden="true">
+              <Experiments
+                story={story}
+                scenario={scenario}
+                setScenario={(value) => {
+                  setScenario(value);
+                  setPlaying(false);
+                  setStoryError("");
+                }}
+                run={() => void runStory()}
+                busy={storyRunning}
+                connected={available}
+                error={storyError}
+              />
+            )}
+          </div>
+
+          <div className="lab-stage">
+            {snapshot ? (
+              <>
+                <Structure
+                  snapshot={snapshot}
+                  selectedPageId={snapshot.page_id}
+                  onSelect={(id) => void selectPage(id)}
+                  disabled={snapshotDisabled}
+                  mode={mode}
+                  linkedFrame={selectedLog}
+                  selectedKey={selectedKey}
+                  clearLog={() => selectLogFrame(undefined)}
+                  operationKey={
+                    recorded
+                      ? `${story?.run_id}:${frame?.id}`
+                      : operationId(snapshot)
+                  }
+                  pulseAllowed={!recorded || !stopped}
+                />
+                <DurabilityRail
+                  snapshot={snapshot}
+                  disabled={snapshotDisabled}
+                  checkpoint={
+                    mode === "live"
+                      ? () => void globalCommand("checkpoint")
+                      : undefined
+                  }
+                  selectPage={(id) => void selectPage(id)}
+                  selectedFrame={selectedLog}
+                  onSelectFrame={chooseLog}
+                />
+              </>
+            ) : (
+              <section className="lab-empty">
+                <div className="lab-empty-figure" aria-hidden="true">
                   <i />
                   <span />
                   <div>
@@ -589,62 +730,64 @@ export default function App() {
                     <i />
                   </div>
                 </div>
-                <span className="eyebrow">
-                  SMALL ENGINE. VISIBLE CONSEQUENCES.
-                </span>
                 <h2>
-                  {connectionError
-                    ? "Waiting for the engine."
-                    : "Opening the database…"}
+                  {mode === "replay"
+                    ? "Choose an experiment to begin."
+                    : connectionError
+                      ? "Waiting for the engine."
+                      : "Opening the database…"}
                 </h2>
                 <p>
-                  The workspace fills with verified pages when the local engine
-                  connects.
+                  {mode === "replay"
+                    ? "Each run drives the real Rust engine against a disposable database and captures every page it writes."
+                    : "The stage fills with verified pages as soon as the local engine answers."}
                 </p>
+                {mode === "replay" && (
+                  <button
+                    className="watch-split"
+                    disabled={busy || !available}
+                    onClick={watchSplit}
+                  >
+                    {storyRunning ? "Capturing…" : "Watch a page split"}
+                  </button>
+                )}
               </section>
             )}
-            {snapshot && (
-              <Journal
-                snapshot={snapshot}
-                disabled={snapshotDisabled}
-                checkpoint={
-                  mode === "live"
-                    ? () => void globalCommand("checkpoint")
-                    : undefined
-                }
-                selectPage={(id) => void selectPage(id)}
-              />
-            )}
           </div>
+
           {snapshot ? (
-            <PageInspector
+            <Inspector
               snapshot={snapshot}
               selectedKey={selectedKey}
               onSelectKey={(key) => {
+                selectLogFrame(undefined);
                 setSelectedKey(key);
                 setPlaying(false);
               }}
               onSelectPage={(id) => void selectPage(id)}
               mode={mode}
+              selectedFrame={selectedLog}
+              onSelectFrame={chooseLog}
+              disabled={snapshotDisabled}
             />
-          ) : mode === "live" ? (
+          ) : (
             <aside className="inspect-placeholder">
-              <span className="eyebrow">PAGE INSPECTOR</span>
+              <span className="kicker">Page inspector</span>
               <p>
-                Select any page to reveal its records, routing, and raw bytes.
+                Select any page to reveal its records, routing table and raw 4
+                KB image.
               </p>
-              <div aria-hidden="true">
-                0000 <span>57 41 4C 4E 55 54</span>
-                <br />
-                0010 <span>·· ·· ·· ·· ·· ··</span>
-                <br />
-                0020 <span>·· ·· ·· ·· ·· ··</span>
-              </div>
+              <pre>
+                {"0000  57 41 4C 4E 55 54  WALNUT\n"}
+                <b>{"0010  ·· ·· ·· ·· ·· ··  ······\n"}</b>
+                <b>{"0020  ·· ·· ·· ·· ·· ··  ······"}</b>
+              </pre>
             </aside>
-          ) : null}
+          )}
         </div>
+
         {mode === "replay" && story && (
-          <StoryPlayer
+          <RecordedTimeline
             story={story}
             index={index}
             playing={playing}
@@ -655,65 +798,20 @@ export default function App() {
             setSpeed={setSpeed}
           />
         )}
+
         {mode === "live" && live && (
-          <section className="work-events" aria-labelledby="events-title">
-            <header>
-              <div>
-                <span className="eyebrow">ENGINE TIMELINE</span>
-                <h2 id="events-title">The latest operation, in order.</h2>
-              </div>
-              <span>Page links inspect the current state.</span>
-            </header>
-            {missedEvents > 0 && (
-              <p className="work-stream-gap" role="status">
-                Timeline gap: {missedEvents} events passed outside the retained
-                window. The current snapshot is complete.
-              </p>
-            )}
-            <ol>
-              {live.events.slice(-6).map((event) => (
-                <li key={`${event.session_id}:${event.sequence}`}>
-                  <span className="event-sequence">
-                    {String(event.sequence).padStart(3, "0")}
-                  </span>
-                  <div>
-                    <strong>{event.kind.replaceAll("_", " ")}</strong>
-                    <p>{event.detail}</p>
-                  </div>
-                  <span className="event-generation">G{event.generation}</span>
-                  {event.page_id !== null &&
-                    (event.page_id === 0 ||
-                      live.pages.some((page) => page.id === event.page_id)) && (
-                      <button
-                        disabled={snapshotDisabled}
-                        onClick={() => void selectPage(event.page_id!)}
-                      >
-                        P{event.page_id} ↗
-                      </button>
-                    )}
-                </li>
-              ))}
-            </ol>
-            <details>
-              <summary>All {live.events.length} retained events</summary>
-              <ol>
-                {live.events.map((event) => (
-                  <li key={`${event.session_id}:${event.sequence}`}>
-                    <span className="event-sequence">{event.sequence}</span>
-                    <div>
-                      <strong>{event.kind.replaceAll("_", " ")}</strong>
-                      <p>{event.detail}</p>
-                    </div>
-                    <span className="event-generation">
-                      G{event.generation}
-                    </span>
-                  </li>
-                ))}
-              </ol>
-            </details>
-          </section>
+          <EventTimeline
+            events={live.events}
+            missed={missedEvents}
+            disabled={snapshotDisabled}
+            knownPage={(id) =>
+              id === 0 || live.pages.some((page) => page.id === id)
+            }
+            selectPage={(id) => void selectPage(id)}
+          />
         )}
-        <details className="work-advanced">
+
+        <details className="lab-advanced">
           <summary>
             Advanced crash lab <span>Choose an exact failure boundary</span>
           </summary>
@@ -722,19 +820,55 @@ export default function App() {
             error={labError}
             disabled={busy || !available}
             running={labRunning}
-            run={(boundary, scenario) => void runLab(boundary, scenario)}
+            run={(boundary, labScenario) => void runLab(boundary, labScenario)}
           />
         </details>
       </main>
-      <footer className="work-footer">
+
+      <footer className="lab-footer">
         <span>
-          <img src="/walnut.svg" alt="" /> A tiny database with its internals on
+          <img src={brandMark} alt="" />A tiny database with its internals on
           display.
         </span>
         <span>
-          RUST ENGINE <i /> REAL FILES <i /> WALnut
+          RUST ENGINE <i /> REAL FILES <i /> VERIFIED BYTES
         </span>
       </footer>
     </div>
+  );
+}
+
+/** One obvious next move, derived from what the database is holding. */
+function NextAction({
+  snapshot,
+  disabled,
+  onCheckpoint,
+  onCommit,
+  onExperiments,
+}: {
+  snapshot: Snapshot;
+  disabled: boolean;
+  onCheckpoint: () => void;
+  onCommit: () => void;
+  onExperiments: () => void;
+}) {
+  if (snapshot.staged.length > 0)
+    return (
+      <button data-emphasis="strong" disabled={disabled} onClick={onCommit}>
+        Commit {snapshot.staged.length}{" "}
+        {snapshot.staged.length === 1 ? "put" : "puts"}{" "}
+        <i aria-hidden="true">→</i>
+      </button>
+    );
+  if (snapshot.wal_frame_count > 0)
+    return (
+      <button disabled={disabled} onClick={onCheckpoint}>
+        Checkpoint the file <i aria-hidden="true">→</i>
+      </button>
+    );
+  return (
+    <button onClick={onExperiments}>
+      Run an experiment <i aria-hidden="true">→</i>
+    </button>
   );
 }

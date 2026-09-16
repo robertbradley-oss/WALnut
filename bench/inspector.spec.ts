@@ -97,7 +97,14 @@ test("profile actual large captures and bounded playback", async ({
       });
       await page.goto(`http://127.0.0.1:${port}/?mode=live`);
       await expect(page.getByTestId("record-count")).toHaveText("1792");
-      expect(await page.locator(".canvas-page").count()).toBeLessThanOrEqual(6);
+      // The stage draws a bounded window of each level; the page map carries
+      // one cell per allocated page so nothing becomes unreachable.
+      expect(await page.locator(".canvas-page").count()).toBeLessThanOrEqual(
+        30,
+      );
+      expect(await page.locator(".page-map-cell").count()).toBe(
+        fixture.snapshot.page_count,
+      );
       await page.screenshot({
         path: resolve(directory, `live-${rate}x.png`),
         animations: "disabled",
@@ -152,8 +159,10 @@ test("profile actual large captures and bounded playback", async ({
       const durations = (name: string) =>
         samples.filter((s) => s.name === name).map((s) => s.duration);
       expect(errors).toEqual([]);
-      expect(await page.locator(".canvas-page").count()).toBeLessThanOrEqual(6);
-      expect(await page.locator(".player-steps > li").count()).toBe(4);
+      expect(await page.locator(".canvas-page").count()).toBeLessThanOrEqual(
+        30,
+      );
+      expect(await page.locator(".timeline-steps > li").count()).toBe(4);
       expect(
         await page.evaluate(
           () => performance.getEntriesByType("measure").length,
@@ -176,6 +185,7 @@ test("profile actual large captures and bounded playback", async ({
         after_gc: retained,
         rendered_nodes: await page.locator("*").count(),
         tree_cards: await page.locator(".canvas-page").count(),
+        page_map_cells: await page.locator(".page-map-cell").count(),
       });
       await context.close();
     }

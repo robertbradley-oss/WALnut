@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { validateStory } from "./protocol";
-import type { RecordedStory, StoryScenario } from "./types";
-import { StoryGuide, StoryPlayer } from "./StoryPlayer";
-import { TreeCanvas } from "./TreeCanvas";
-import { PageInspector } from "./PageInspector";
-import { Journal } from "./Journal";
-import logo from "../public/walnut.svg?raw";
-import "./recovery.css";
-import "./workbench.css";
+import type { RecordedStory, StoryScenario, WalFrame } from "./types";
+import { Experiments } from "./Experiments";
+import { RecordedTimeline } from "./Timeline";
+import { Structure } from "./Structure";
+import { Inspector } from "./Inspector";
+import { DurabilityRail } from "./DurabilityRail";
+import { OperationBar, describeFrame, withChanges } from "./OperationBar";
+import { useLogSelection } from "./inspection";
+import { Brand, brandMark } from "./Brand";
+import "./lab.css";
 import "./replay.css";
 
 export interface ReplayBundle {
@@ -62,7 +64,6 @@ export function readBundle(input: unknown): ReplayBundle {
   return value;
 }
 
-const icon = `data:image/svg+xml,${encodeURIComponent(logo)}`;
 const pad = (value: number) => String(value).padStart(2, "0");
 
 export default function ReplayApp({ bundle }: { bundle: ReplayBundle }) {
@@ -89,6 +90,16 @@ export default function ReplayApp({ bundle }: { bundle: ReplayBundle }) {
     }),
     [frame, page],
   );
+  const stopped = frame.kind === "crashed";
+  const operation = withChanges(
+    describeFrame(frame),
+    snapshot,
+    story.frames[index - 1]?.capture.snapshot,
+  );
+  const { frame: selectedLog, selectFrame: selectLogFrame } = useLogSelection(
+    snapshot,
+    `${story.run_id}:${frame.id}`,
+  );
 
   const seek = (next: number) => {
     const at = Math.max(0, Math.min(next, story.frames.length - 1));
@@ -106,11 +117,25 @@ export default function ReplayApp({ bundle }: { bundle: ReplayBundle }) {
     setKey("");
     window.history.replaceState(null, "", `#${next}`);
   };
-  const selectPage = (id: number) => {
+  const selectPage = (id: number, selectedKey = "") => {
+    selectLogFrame(undefined);
     setPlaying(false);
     setPage(id);
-    setKey("");
+    setKey(selectedKey);
   };
+  const chooseLog = (transaction: WalFrame) => {
+    const id = transaction.page_ids.includes(snapshot.page_id)
+      ? snapshot.page_id
+      : (transaction.page_ids.find((id) => id !== 0) ?? 0);
+    selectPage(id, id === snapshot.page_id ? key : "");
+    selectLogFrame(transaction);
+  };
+  const watchSplit = () => {
+    choose("split");
+    setPlaying(true);
+    document.getElementById("workspace")?.scrollIntoView({ block: "start" });
+  };
+
   useEffect(() => {
     if (!playing) return;
     if (index === story.frames.length - 1) {
@@ -124,6 +149,7 @@ export default function ReplayApp({ bundle }: { bundle: ReplayBundle }) {
     }, 2400 / speed);
     return () => clearTimeout(timer);
   }, [playing, story, index, speed]);
+
   useEffect(() => {
     const pause = () => {
       if (document.hidden) setPlaying(false);
@@ -133,27 +159,26 @@ export default function ReplayApp({ bundle }: { bundle: ReplayBundle }) {
   }, []);
 
   return (
-    <div className="workbench replay-workbench">
+    <div className="lab replay-lab">
       <a className="skip-link" href="#workspace">
         Skip to workspace
       </a>
-      <header className="work-header">
-        <a
-          className="work-brand"
-          href="#workspace"
-          aria-label="WALnut workspace"
-        >
-          <img src={icon} alt="" />
-          <span>
-            WAL<span>nut</span>
-          </span>
-        </a>
-        <span className="work-tagline">A database, from the inside.</span>
-        <span className="replay-badge">RECORDED EXECUTION</span>
+
+      <header className="lab-header">
+        <Brand href="#workspace" label="WALnut workspace" />
+        <span className="lab-tagline">A database with its internals open.</span>
+        <div className="lab-status-chip">
+          <button className="watch-split" onClick={watchSplit}>
+            Watch a page split <span aria-hidden="true">↗</span>
+          </button>
+          <span className="lab-badge replay-badge">RECORDED EXECUTION</span>
+          <span className="lab-stack">RUST · B+ TREE · WAL</span>
+        </div>
       </header>
+
       <section className="replay-intro" aria-labelledby="replay-title">
         <div>
-          <p className="eyebrow">RUST ENGINE / B+ TREE / WRITE-AHEAD LOG</p>
+          <p className="kicker">Portable capture · no engine required</p>
           <h1 id="replay-title">
             Follow a write.
             <br />
@@ -162,95 +187,132 @@ export default function ReplayApp({ bundle }: { bundle: ReplayBundle }) {
         </div>
         <div>
           <p>
-            A real key/value database with its internals on display. Follow a
-            page split, a process crash after commit, and recovery from the
-            write-ahead log.
+            A real Rust key/value database with its internals on display. Three
+            captured engine runs: a page split, a process terminated after an
+            acknowledged commit, and a checkpoint that moves the log into the
+            main file.
           </p>
           <p className="replay-caption">
-            Three captured engine runs. Every page and byte comes from the
-            recording.
+            Every page, byte and checksum on this page came out of the
+            recording. Nothing here is a mock-up.
           </p>
         </div>
       </section>
+
       <main id="workspace">
-        <div className="work-metrics" aria-label="Recorded frame statistics">
-          <div>
-            <span>RECORDS</span>
-            <strong data-testid="record-count">
-              {pad(snapshot.record_count)}
-            </strong>
+        <div className="lab-strip">
+          <div className="lab-identity">
+            <strong>{story.title}</strong>
+            <small>Recorded run {story.run_id.slice(0, 12)} · read only</small>
           </div>
-          <div>
-            <span>NODE PAGES</span>
-            <strong data-testid="page-count">{pad(snapshot.page_count)}</strong>
-          </div>
-          <div>
-            <span>TREE HEIGHT</span>
-            <strong data-testid="tree-height">
-              {snapshot.tree_height}{" "}
-              {snapshot.tree_height === 1 ? "level" : "levels"}
-            </strong>
-          </div>
-          <div>
-            <span>ROOT</span>
-            <strong data-testid="root-page">P{snapshot.root_page_id}</strong>
-          </div>
-          <div>
-            <span>GENERATION</span>
-            <strong data-testid="generation">{pad(snapshot.generation)}</strong>
-          </div>
-          <div className="work-metric-note">
-            <b>
-              {frame.kind === "crashed"
-                ? "Process stopped."
-                : "Captured engine state."}
-            </b>
-            <span>
-              {frame.kind === "crashed"
-                ? "Last verified pages before termination"
-                : "Select a page to inspect its bytes"}
-            </span>
-          </div>
+          <dl className="lab-metrics" aria-label="Recorded frame statistics">
+            <div>
+              <dt>Records</dt>
+              <dd data-testid="record-count">{pad(snapshot.record_count)}</dd>
+            </div>
+            <div>
+              <dt>Node pages</dt>
+              <dd data-testid="page-count">{pad(snapshot.page_count)}</dd>
+            </div>
+            <div>
+              <dt>Height</dt>
+              <dd data-testid="tree-height">
+                {snapshot.tree_height}{" "}
+                <em>{snapshot.tree_height === 1 ? "level" : "levels"}</em>
+              </dd>
+            </div>
+            <div>
+              <dt>Root</dt>
+              <dd data-testid="root-page">P{snapshot.root_page_id}</dd>
+            </div>
+            <div>
+              <dt>Generation</dt>
+              <dd data-testid="generation">{pad(snapshot.generation)}</dd>
+            </div>
+          </dl>
         </div>
-        <div className="work-grid">
-          <StoryGuide
-            story={story}
-            frame={frame}
-            index={index}
-            scenario={scenario}
-            setScenario={choose}
-            run={() => seek(0)}
-            busy={false}
-            connected={false}
-            error=""
-            recorded
-          />
-          <div className="work-center">
-            <TreeCanvas
+
+        <OperationBar
+          operation={operation}
+          label="Current story step"
+          badge="RECORDED"
+          badgeTone={stopped ? "failed" : "checkpointed"}
+          badgeNote={
+            stopped
+              ? "process terminated"
+              : `step ${index + 1} of ${story.frames.length}`
+          }
+          notice={
+            stopped ? (
+              <>
+                <strong className="story-stopped">
+                  Process stopped · last captured state
+                </strong>
+                {story.process && (
+                  <small className="story-process">
+                    Child PID {story.process.process_id} ·{" "}
+                    {story.process.process_terminated
+                      ? "terminated and reaped"
+                      : "exit not confirmed"}
+                  </small>
+                )}
+              </>
+            ) : null
+          }
+        />
+
+        <div className="lab-grid">
+          <div className="lab-rail">
+            <Experiments
+              story={story}
+              scenario={scenario}
+              setScenario={choose}
+              run={() => seek(0)}
+              busy={false}
+              connected={false}
+              error=""
+              recorded
+            />
+          </div>
+
+          <div className="lab-stage">
+            <Structure
               snapshot={snapshot}
               selectedPageId={snapshot.page_id}
               onSelect={selectPage}
               disabled={false}
               mode="replay"
+              linkedFrame={selectedLog}
+              selectedKey={key}
+              clearLog={() => selectLogFrame(undefined)}
+              operationKey={`${story.run_id}:${frame.id}`}
+              pulseAllowed={!stopped}
             />
-            <Journal
+            <DurabilityRail
               snapshot={snapshot}
               disabled={false}
               selectPage={selectPage}
+              selectedFrame={selectedLog}
+              onSelectFrame={chooseLog}
             />
           </div>
-          <PageInspector
+
+          <Inspector
             snapshot={snapshot}
             selectedKey={key}
-            onSelectKey={(key) => {
-              setKey(key);
+            onSelectKey={(value) => {
+              selectLogFrame(undefined);
+              setKey(value);
               setPlaying(false);
             }}
             onSelectPage={selectPage}
             mode="replay"
+            selectedFrame={selectedLog}
+            onSelectFrame={chooseLog}
           />
         </div>
-        <StoryPlayer
+
+        <RecordedTimeline
           story={story}
           index={index}
           playing={playing}
@@ -259,8 +321,12 @@ export default function ReplayApp({ bundle }: { bundle: ReplayBundle }) {
           setPlaying={setPlaying}
           setSpeed={setSpeed}
         />
-        <details className="replay-provenance">
-          <summary>Source, guarantees, and licenses</summary>
+
+        <details className="replay-provenance lab-advanced">
+          <summary>
+            Source, guarantees, and licenses
+            <span>Where these bytes came from</span>
+          </summary>
           <div className="replay-provenance-grid">
             <section>
               <h2>Captured from WALnut</h2>
@@ -286,13 +352,14 @@ export default function ReplayApp({ bundle }: { bundle: ReplayBundle }) {
             <section>
               <h2>What this demonstrates</h2>
               <p>
-                The Rust engine commits changed pages and metadata to a
-                checksummed log, syncs and reads them back, then acknowledges
-                the batch. Recovery restores whole committed transactions.
+                The Rust engine writes changed pages and metadata into a
+                checksummed log, syncs them, reads them back exactly, and only
+                then acknowledges the batch. Recovery restores whole committed
+                transactions and rejects incomplete ones.
               </p>
               <p>
-                The recovery recording uses a terminated child process. It does
-                not establish hardware power-loss survival. This file replays
+                The recovery recording terminates a child process. It does not
+                establish hardware power-loss survival. This file replays
                 captured operations; it cannot accept database writes.
               </p>
             </section>
@@ -303,9 +370,10 @@ export default function ReplayApp({ bundle }: { bundle: ReplayBundle }) {
           </details>
         </details>
       </main>
-      <footer className="work-footer">
+
+      <footer className="lab-footer">
         <span>
-          <img src={icon} alt="" /> A tiny database with its internals on
+          <img src={brandMark} alt="" />A tiny database with its internals on
           display.
         </span>
         <span>

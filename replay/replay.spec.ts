@@ -89,9 +89,7 @@ for (const story of bundle.stories) {
         } else await expect(checkpoint).toBeDisabled();
       }
     }
-    await page
-      .getByText("Source, guarantees, and licenses", { exact: true })
-      .click();
+    await page.locator(".replay-provenance > summary").click();
     await expect(page.locator(".replay-provenance")).toContainText(
       bundle.source.revision,
     );
@@ -99,6 +97,62 @@ for (const story of bundle.stories) {
     expect(errors).toEqual([]);
   });
 }
+
+test("offline first experiment links WAL images without retaining a selection across frames", async ({
+  page,
+}) => {
+  await page.goto(pathToFileURL(file).href + "#checkpoint");
+  const requests: string[] = [];
+  page.on("request", (request) => {
+    if (/^https?:/.test(request.url())) requests.push(request.url());
+  });
+  await page.getByRole("button", { name: "Watch a page split" }).click();
+  await expect(page).toHaveURL(/#split$/);
+  await expect(page.locator(".player-state")).toContainText("PLAYING");
+  await page.getByRole("button", { name: /^Step 3:/ }).click();
+  await expect(
+    page.getByLabel("Changes since previous operation"),
+  ).toContainText("Records +2");
+  await page
+    .getByRole("button", { name: /^Transaction generation 2,/ })
+    .click();
+  await expect(page.locator(".canvas-page[data-log]")).toHaveCount(3);
+  await page.getByRole("button", { name: /^Step 1:/ }).click();
+  await page.getByRole("button", { name: /^Step 3:/ }).click();
+  await expect(page.locator(".canvas-page[data-log]")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Inspect leaf page 2", exact: true })
+    .click();
+  await page.locator(".inspect-record").first().click();
+  await page.getByRole("button", { name: "Show selected bytes" }).click();
+  const captured = bundle.stories
+    .find((story) => story.scenario === "split")!
+    .frames[2].capture.pages.find((page) => page.page_id === 2)!;
+  await expect(page.locator(".hex-table .key-byte")).toHaveCount(
+    captured.records[0].key_length,
+  );
+  await page.getByRole("button", { name: /01 A page splits/ }).click();
+  await page.getByRole("button", { name: /^Step 1:/ }).click();
+  await page.locator(".inspect-record").first().click();
+  await page.getByRole("button", { name: /Checkpoint page · gen/ }).click();
+  await page.getByRole("button", { name: "Show selected bytes" }).click();
+  await expect(
+    page.getByRole("button", { name: /Committed page · gen/ }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: /03 The file catches up/ }).click();
+  await page.getByRole("button", { name: /^Step 3:/ }).click();
+  await expect(page.locator(".canvas-page[data-log]")).toHaveCount(0);
+  await expect(page.getByLabel("Page and log relationship")).toContainText(
+    "No image of this page in the retained log",
+  );
+  await expect(
+    page.getByLabel("Changes since previous operation"),
+  ).toContainText("Records +0");
+  await expect(
+    page.getByLabel("Changes since previous operation"),
+  ).toContainText("Gen 2 unchanged");
+  expect(requests).toEqual([]);
+});
 
 test("portable routes, keyboard playback and responsive page exploration", async ({
   page,

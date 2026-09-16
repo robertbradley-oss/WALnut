@@ -6,7 +6,7 @@ import type {
   RangeResult,
   Snapshot,
 } from "./types";
-import "./command-panel.css";
+import "./console.css";
 
 export type LiveCommand =
   | "put"
@@ -19,7 +19,7 @@ export type LiveCommand =
   | "reopen"
   | "grow";
 
-interface CommandPanelProps {
+interface ConsoleProps {
   snapshot: Snapshot | null;
   busy: boolean;
   connected: boolean;
@@ -64,14 +64,14 @@ function before(left: string, right: string) {
   return a.length < b.length;
 }
 
-export function CommandPanel({
+export function Console({
   snapshot,
   busy,
   connected,
   waiting = false,
   onCommand,
   onSelectPage,
-}: CommandPanelProps) {
+}: ConsoleProps) {
   const id = useId();
   const keyInput = useRef<HTMLInputElement>(null);
   const submitting = useRef(false);
@@ -216,19 +216,18 @@ export function CommandPanel({
 
   const invalid = operation === "range" ? invalidRange : invalidKey;
   return (
-    <section className="live-command" aria-labelledby={`${id}-heading`}>
-      <header className="command-heading">
+    <section className="console" aria-labelledby={`${id}-heading`}>
+      <header className="console-head">
         <div>
-          <span className="command-eyebrow">LIVE DATABASE</span>
-          <h2 id={`${id}-heading`}>Your next move</h2>
+          <span className="kicker">Command</span>
+          <h2 id={`${id}-heading`}>Drive the engine</h2>
         </div>
-        <span className="command-prompt" aria-hidden="true">
+        <span className="console-prompt num" aria-hidden="true">
           &gt;_
         </span>
       </header>
-      <p className="command-intro">Write a key. Follow it through the tree.</p>
 
-      <div className="command-operations" role="group" aria-label="Operation">
+      <div className="console-ops" role="group" aria-label="Operation">
         {(
           [
             ["put", "PUT", "Write"],
@@ -243,16 +242,17 @@ export function CommandPanel({
             onClick={() => changeOperation(kind)}
             disabled={working}
           >
-            {label} <span>{description}</span>
+            <b className="num">{label}</b>
+            <span>{description}</span>
           </button>
         ))}
       </div>
 
-      <form className="command-form" onSubmit={submit}>
+      <form className="console-form" onSubmit={submit}>
         {operation === "range" ? (
           <>
             <label htmlFor={`${id}-start`}>
-              Start key <span>INCLUSIVE</span>
+              Start key <span>inclusive</span>
             </label>
             <input
               id={`${id}-start`}
@@ -269,7 +269,7 @@ export function CommandPanel({
               placeholder="First key, or leave empty"
             />
             <label htmlFor={`${id}-end`}>
-              End key <span>EXCLUSIVE</span>
+              End key <span>exclusive</span>
             </label>
             <input
               id={`${id}-end`}
@@ -285,7 +285,7 @@ export function CommandPanel({
               aria-describedby={`${id}-range-help`}
               placeholder="Last boundary, or leave empty"
             />
-            <div className="command-limit-row">
+            <div className="console-limit">
               <label htmlFor={`${id}-limit`}>
                 Result limit <span>1–256</span>
               </label>
@@ -305,7 +305,7 @@ export function CommandPanel({
               />
             </div>
             <p
-              className={`command-help ${invalidRange ? "command-invalid" : ""}`}
+              className={`console-help ${invalidRange ? "console-invalid" : ""}`}
               id={`${id}-range-help`}
             >
               {invalidBounds
@@ -314,7 +314,7 @@ export function CommandPanel({
                   ? "Each boundary can contain at most 64 UTF-8 bytes."
                   : invalidLimit
                     ? "Choose a whole-number limit from 1 to 256."
-                    : "Empty bounds scan all keys. Results follow leaf links in UTF-8 byte order."}
+                    : "Empty bounds scan every key. Results follow leaf links in UTF-8 byte order."}
             </p>
           </>
         ) : (
@@ -323,7 +323,7 @@ export function CommandPanel({
               Key{" "}
               <span
                 aria-hidden="true"
-                className={keyBytes > 64 ? "command-invalid" : ""}
+                className={`num ${keyBytes > 64 ? "console-invalid" : ""}`}
               >
                 {keyBytes} / 64 B
               </span>
@@ -342,7 +342,7 @@ export function CommandPanel({
               aria-invalid={keyBytes > 64}
               aria-describedby={`${id}-key-help`}
             />
-            <span className="command-sr-only" id={`${id}-key-help`}>
+            <span className="sr-only" id={`${id}-key-help`}>
               1 to 64 UTF-8 bytes. Keys are case-sensitive.
             </span>
           </>
@@ -353,7 +353,7 @@ export function CommandPanel({
               Value{" "}
               <span
                 aria-hidden="true"
-                className={invalidValue ? "command-invalid" : ""}
+                className={`num ${invalidValue ? "console-invalid" : ""}`}
               >
                 {valueBytes.toLocaleString()} / 1,024 B
               </span>
@@ -368,7 +368,7 @@ export function CommandPanel({
               aria-invalid={invalidValue}
               aria-describedby={`${id}-value-help`}
             />
-            <p className="command-help" id={`${id}-value-help`}>
+            <p className="console-help" id={`${id}-value-help`}>
               An existing key is updated. An empty value is valid.
             </p>
           </>
@@ -376,7 +376,7 @@ export function CommandPanel({
 
         <button
           type="submit"
-          className="command-submit"
+          className="console-submit"
           disabled={
             disabled ||
             invalid ||
@@ -390,22 +390,22 @@ export function CommandPanel({
                 ? "Find this key"
                 : "Scan this range"}
           </span>
-          <span aria-hidden="true">{working ? "···" : "↗"}</span>
+          <i aria-hidden="true">{working ? "···" : "↵"}</i>
         </button>
         {operation === "put" && (
           <>
             <button
-              className="command-stage"
+              className="console-stage"
               type="button"
               disabled={
                 disabled || invalidKey || invalidValue || staged.length >= 64
               }
               onClick={() => void execute("stage")}
             >
-              <span aria-hidden="true">＋</span> Stage in batch
+              <i aria-hidden="true">+</i> Stage in batch
             </button>
             {staged.length > 0 && (
-              <p className="command-help">
+              <p className="console-help">
                 Commit or discard the pending batch before a single put.
               </p>
             )}
@@ -414,14 +414,16 @@ export function CommandPanel({
       </form>
 
       {staged.length > 0 && (
-        <section className="command-batch" aria-label="Staged batch">
-          <div className="command-batch-heading">
+        <section className="console-batch" aria-label="Staged batch">
+          <div className="console-batch-head">
             <strong>
               {staged.length} {staged.length === 1 ? "put" : "puts"} in memory
             </strong>
-            <span>{staged.length} / 64</span>
+            <span className="num">{staged.length} / 64</span>
           </div>
-          <p>{snapshot?.staged_page_count} candidate pages · uncommitted</p>
+          <p className="num">
+            {snapshot?.staged_page_count} candidate pages · not durable
+          </p>
           <ol>
             {staged.map((put, index) => (
               <li key={index}>
@@ -432,7 +434,7 @@ export function CommandPanel({
               </li>
             ))}
           </ol>
-          <div className="command-batch-actions">
+          <div className="console-batch-actions">
             <button
               type="button"
               disabled={disabled}
@@ -451,29 +453,25 @@ export function CommandPanel({
         </section>
       )}
 
-      <div
-        className="command-feedback-area"
-        aria-live="polite"
-        aria-atomic="true"
-      >
+      <div className="console-feedback" aria-live="polite" aria-atomic="true">
         {feedback ? (
           <p
-            className={`command-${feedback.kind}`}
+            className={`console-${feedback.kind}`}
             role={feedback.kind === "error" ? "alert" : undefined}
           >
             {feedback.text}
           </p>
         ) : (
-          <p className="command-idle">
+          <p className="console-idle">
             {working || waiting
               ? "Waiting for the engine…"
               : !connected
                 ? "Engine offline. Reopen to reconnect."
-                : "UTF-8 text · Case-sensitive keys"}
+                : "UTF-8 text · case-sensitive keys"}
           </p>
         )}
         {operation === "get" && readResult?.found && (
-          <output className="command-read" aria-label="Read value">
+          <output className="console-read" aria-label="Read value">
             {readResult.value === "" ? (
               <em>(empty string)</em>
             ) : (
@@ -484,12 +482,12 @@ export function CommandPanel({
       </div>
 
       {operation === "range" && scanResult && (
-        <section className="command-results" aria-label="Range results">
-          <h3>
-            {scanResult.result.records.length} records <span>in key order</span>
+        <section className="console-results" aria-label="Range results">
+          <h3 className="kicker">
+            {scanResult.result.records.length} records<em>in key order</em>
           </h3>
           {scanResult.result.records.length === 0 ? (
-            <p>No records in this range.</p>
+            <p className="console-help">No records in this range.</p>
           ) : (
             <ol>
               {scanResult.result.records.map((record) => (
@@ -500,7 +498,7 @@ export function CommandPanel({
                     onClick={() => onSelectPage(record.page_id, record.key)}
                   >
                     <span>{record.key}</span>
-                    <small>P{record.page_id} ↗</small>
+                    <small className="num">P{record.page_id} ↗</small>
                   </button>
                   <code title={record.value}>
                     {record.value === "" ? "(empty string)" : record.value}
@@ -511,7 +509,7 @@ export function CommandPanel({
           )}
           {scanResult.result.next_key !== null ? (
             <button
-              className="command-next"
+              className="console-next"
               type="button"
               disabled={disabled}
               onClick={() => void execute("range", scanResult)}
@@ -520,30 +518,36 @@ export function CommandPanel({
             </button>
           ) : (
             scanResult.result.records.length > 0 && (
-              <p className="command-range-end">End of range</p>
+              <p className="console-help">End of range</p>
             )
           )}
         </section>
       )}
 
-      <div className="command-reopen">
-        <div>
-          <strong>Pick up where you left off.</strong>
-          <p>
-            {staged.length
-              ? "Reopen discards staged puts."
-              : "Reopen and replay the WAL."}
-          </p>
-        </div>
+      <div className="console-utilities">
         <button
           type="button"
+          className="console-utility"
+          disabled={disabled || !!staged.length}
+          aria-label="Insert 64 sample records"
+          onClick={() => void execute("grow")}
+        >
+          <b>+ 64 sample records</b>
+          <small>Deterministic keys with 1,000-byte values</small>
+        </button>
+        <button
+          type="button"
+          className="console-utility"
           aria-label="Reopen database"
           disabled={working || waiting}
           onClick={() => void execute("reopen")}
         >
-          <svg viewBox="0 0 20 20" aria-hidden="true">
-            <path d="M15.5 7A6 6 0 1 0 16 12M15.5 3v4h-4" />
-          </svg>
+          <b>Close and reopen</b>
+          <small>
+            {staged.length
+              ? "Discards staged puts, replays the WAL"
+              : "Replays the WAL and re-verifies the tree"}
+          </small>
         </button>
       </div>
     </section>

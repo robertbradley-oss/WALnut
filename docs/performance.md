@@ -105,21 +105,23 @@ The fixture is produced by `walnut profile-fixture <new-directory>` using the re
 - Recorded root split: 116 → 118 records, 59 → 62 pages, four captured operation checkpoints including every page's bytes.
 - About 7.3 MB of JSON for the combined fixture. This intentionally stresses the current recording bound; the three default stories are much smaller.
 
-Playwright routes deliver those captured bytes to the production UI without repeatedly rebuilding the fixture. This isolates frontend ingestion and playback; **network transfer and engine capture generation are excluded**. Tests check displayed generations, no more than six tree cards, four timeline steps, and no page errors. Stepping is measured 48 times from a DOM click through two animation frames. This includes frame scheduling and is **not INP or a pure render-time measurement**.
+Playwright routes deliver those captured bytes to the production UI without repeatedly rebuilding the fixture. This isolates frontend ingestion and playback; **network transfer and engine capture generation are excluded**. Tests check displayed generations, a bounded number of drawn tree cards, one page-map cell per allocated page, four timeline steps, and no page errors. Stepping is measured 48 times from a DOM click through two animation frames. This includes frame scheduling and is **not INP or a pure render-time measurement**.
 
 Chromium runs at native speed and a simulated 4× CPU slowdown, 1,440 × 1,080, headless. The report includes snapshot/story validation times, long tasks, DOM/heap/task metrics, and screenshots. User Timing retains only the latest sample for each of two operation names; the profile observer retains at most 512 entries. The trace itself is bounded to five operation frames and 64 node pages per frame. Larger arbitrary recordings are outside this schema.
 
-[Full inspector measurements](measurements/phase5-inspector.json), Chromium 153.0.8010.12. Each condition includes five recording imports and 48 steps. Values below are p50 / p95 in milliseconds.
+[Phase 7 measurements](measurements/phase7-inspector.json) and the earlier [phase 5 measurements](measurements/phase5-inspector.json), Chromium 153.0.8010.12. Each condition includes five recording imports and 48 steps. Values below are p50 / p95 in milliseconds, phase 7 first.
 
-| Operation                         |      Native | 4× CPU slowdown |
-| --------------------------------- | ----------: | --------------: |
-| Validate 927-page snapshot        |   2.4 / 4.0 |     11.5 / 20.1 |
-| Validate 62-page recording        | 14.3 / 17.7 |     68.2 / 82.8 |
-| Step through two animation frames | 31.0 / 32.2 |     27.8 / 35.9 |
+| Operation                         |                    Native |           4× CPU slowdown |
+| --------------------------------- | ------------------------: | ------------------------: |
+| Validate 927-page snapshot        |     2.2 / 4.1 _(2.4/4.0)_ | 16.3 / 21.7 _(11.5/20.1)_ |
+| Validate 62-page recording        | 14.3 / 15.7 _(14.3/17.7)_ | 81.7 / 94.2 _(68.2/82.8)_ |
+| Step through two animation frames | 29.9 / 31.6 _(31.0/32.2)_ | 49.4 / 81.1 _(27.8/35.9)_ |
 
-The 48-step task-counter delta was 236 ms native and 1,081 ms at 4× slowdown. Two-frame timing includes refresh scheduling; its median need not rise monotonically with CPU work. At rest, recorded playback rendered three tree cards and 812 DOM elements in both conditions; post-GC JavaScript heap usage was about 21.4 MiB (not total browser memory). There were no long tasks in the native profile and 15 tasks of 56–99 ms across the slowed profile, which includes import, polling, and stepping. These observations do not assert a universal frame-rate target.
+The 48-step task-counter delta was 462 ms native and 3,109 ms at 4× slowdown. Two-frame timing includes refresh scheduling and has a floor near one 60 Hz interval, so the native median is close to that floor rather than to the work done. At rest, recorded playback rendered seven tree cards, 62 page-map cells and 1,046 DOM elements in both conditions; post-GC JavaScript heap usage was about 13.6 MiB (not total browser memory). There were no long tasks in the native profile and 25 tasks of 51–177 ms across the slowed profile, which includes import, polling, and stepping. These observations do not assert a universal frame-rate target.
 
-Visual evidence: [large live tree](media/phase5-large-live.png), [recorded root split](media/phase5-large-replay.png), [delayed engine](media/phase5-delayed.png), and [event gap](media/phase5-event-gap.png).
+The phase 7 interface draws more than its predecessor: a page map with one cell per allocated page, a wider slice of each tree level, and an operation bar rebuilt from the snapshot's events. Native stepping is unchanged, and the throttled p95 roughly doubled (35.9 → 81.1 ms). Memoizing the page-map cells against primitive props recovered about a tenth of that. The remaining cost is the deliberate tradeoff for showing the whole database at once; at native speed a step still lands inside two animation frames.
+
+Visual evidence for the current interface: [a committed split](media/walnut-demo.png), [the live workbench](media/walnut-live.png), [a stopped process](media/walnut-recovery.png), and [a checkpointed file](media/walnut-checkpoint.png). The phase 5 interface is retained at [large live tree](media/phase5-large-live.png), [recorded root split](media/phase5-large-replay.png), [delayed engine](media/phase5-delayed.png), and [event gap](media/phase5-event-gap.png).
 
 Initial large-recording import performs more work than steady playback. A slowdown multiplier is a local lab condition, not evidence about a specific phone or laptop. Heap measurements are observations, not proof of absence of every possible leak.
 

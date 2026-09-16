@@ -1,19 +1,20 @@
 # WALnut — Build Roadmap
 
-The lasting direction is in [GAMEPLAN.md](GAMEPLAN.md). This roadmap describes the sequence and observable results. Stages 1–6 are implemented locally; see [foundation verification](docs/stage-1.md), [recovery verification](docs/stage-2.md), [B+ tree verification](docs/stage-3.md), [workbench verification](docs/stage-4.md), [verification/performance results](docs/stage-5.md), and [portfolio/platform verification](docs/stage-6.md). Fresh Windows and Ubuntu checkouts pass the engine, live browser, and portable replay checks. Stage 4 incorporated owner walkthrough feedback; the final follow-up visitor walkthrough remains open. Versioned release files are prepared locally; publishing remains a separate user-directed action. Milestones represent working increments, not calendar promises.
+The lasting direction is in [GAMEPLAN.md](GAMEPLAN.md). This roadmap describes the sequence and observable results. Stages 1–7 are implemented locally; see [foundation verification](docs/stage-1.md), [recovery verification](docs/stage-2.md), [B+ tree verification](docs/stage-3.md), [workbench verification](docs/stage-4.md), [verification/performance results](docs/stage-5.md), [portfolio/platform verification](docs/stage-6.md), and [the interface redesign](docs/stage-7.md). Phase 7 replaced the presentation layer in response to the owner's walkthrough; the engine, its formats and its guarantees are unchanged. Fresh Windows and Ubuntu checkouts pass the engine, live browser, and portable replay checks. Stage 4 incorporated owner walkthrough feedback; the final follow-up visitor walkthrough remains open. Versioned release files are prepared locally; publishing remains a separate user-directed action. Milestones represent working increments, not calendar promises.
 
 ## Astra reasoning levels
 
 Use **GPT-6 Astra** (`gpt-6-astra`). Stage 4 uses the project owner's chosen **Ultra** setting. The other levels are recommended starting settings based on each stage's complexity and consequences. Recording them here does not automatically change a task's model settings.
 
-| Stage | Reasoning level | Focus |
-| --- | --- | --- |
-| 1. Foundation | Extra high (`xhigh`) | Architecture, storage boundaries, and the first complete engine/UI path. |
-| 2. Recovery | Max (`max`) | Commit ordering, interruption cases, checkpoint safety, and durability assumptions. |
-| 3. B+ tree | Max (`max`) | Structural invariants, cascading splits, and atomic changes across pages. |
-| 4. Visual experience | Ultra (`ultra`) | Interaction design, state fidelity, coordinated motion, and failure states. |
-| 5. Verification and performance | Max (`max`) | Fault analysis, independent test models, benchmark validity, and regression diagnosis. |
-| 6. Portfolio finish | High (`high`) | Clear presentation, reproducible setup, documentation, and release preparation. |
+| Stage                           | Reasoning level      | Focus                                                                                  |
+| ------------------------------- | -------------------- | -------------------------------------------------------------------------------------- |
+| 1. Foundation                   | Extra high (`xhigh`) | Architecture, storage boundaries, and the first complete engine/UI path.               |
+| 2. Recovery                     | Max (`max`)          | Commit ordering, interruption cases, checkpoint safety, and durability assumptions.    |
+| 3. B+ tree                      | Max (`max`)          | Structural invariants, cascading splits, and atomic changes across pages.              |
+| 4. Visual experience            | Ultra (`ultra`)      | Interaction design, state fidelity, coordinated motion, and failure states.            |
+| 5. Verification and performance | Max (`max`)          | Fault analysis, independent test models, benchmark validity, and regression diagnosis. |
+| 6. Portfolio finish             | High (`high`)        | Clear presentation, reproducible setup, documentation, and release preparation.        |
+| 7. Interface redesign           | Ultra (`ultra`)      | Information hierarchy, state vocabulary, cause and effect, and comprehension.          |
 
 Use lower effort for routine edits when appropriate. If a later stage uncovers a storage-correctness problem, investigate it at the level assigned to recovery or B+ tree work. Greater reasoning effort does not replace tests, profiling, or observing the interface.
 
@@ -119,6 +120,24 @@ Use lower effort for routine edits when appropriate. If a later stage uncovers a
 **Demonstrate:** a technical visitor can watch it, inspect it, run it, break it, and verify the recovery.
 
 **Evidence:** satisfy the GamePlan finish line and report the remaining limitations plainly. Additional features wait until this release is finished.
+
+## 7. Rebuild the interface around one operation
+
+**Astra reasoning:** Ultra (`ultra`).
+
+**Build**
+
+- Replace the panel dashboard with a single stage: an operation bar that states what the engine last did and what it changed, a dominant tree, and a durability rail that makes commit-versus-checkpoint self-evident.
+- Give colour a job. One hue per state — staged, committed, checkpointed, selected, failed — and nothing else saturated on screen.
+- Draw the whole database, not a window of it: a page map covering every allocated page, with the stage drawing a correctly ordered slice around the selection.
+- Share one layout between the live engine and recorded playback, with an unmistakable badge for which is on screen.
+- Open on the live database so the first thing a visitor sees is a real tree.
+
+**Demonstrate:** a reader recognises what WALnut does, starts an experiment, explains what commit made durable and what recovery restored, and inspects a page on their own.
+
+**Evidence:** the existing browser and replay suites keep their behavioural assertions through the rewrite; responsive, keyboard, reduced-motion and failure states are re-checked in a real browser. See [the redesign record](docs/stage-7.md), including its open items.
+
+**Why it matters:** the engine was already credible. The interface was not communicating it.
 
 ## Technical references
 

@@ -1,0 +1,561 @@
+.console {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  min-width: 0;
+}
+
+.console-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.console-head h2 {
+  margin-top: 3px;
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.console-prompt {
+  font-size: 13px;
+  color: var(--ink-ghost);
+}
+
+/* ── operation tabs ─────────────────────────────────────────────────── */
+
+.console-ops {
+  display: flex;
+  gap: 3px;
+  padding: 3px;
+  border-radius: var(--r);
+  background: var(--bg-sunken);
+}
+
+.console-ops button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 7px 4px;
+  border-radius: var(--r-sm);
+  transition:
+    background var(--quick) var(--ease),
+    color var(--quick) var(--ease);
+}
+
+.console-ops button b {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  color: var(--ink-faint);
+}
+
+.console-ops button span {
+  font-size: 9.5px;
+  color: var(--ink-ghost);
+}
+
+.console-ops button:hover:not(:disabled) b {
+  color: var(--ink-dim);
+}
+
+.console-ops button[aria-pressed="true"] {
+  background: var(--bg-input);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.console-ops button[aria-pressed="true"] b {
+  color: var(--selected);
+}
+
+.console-ops button[aria-pressed="true"] span {
+  color: var(--ink-faint);
+}
+
+/* ── form ───────────────────────────────────────────────────────────── */
+
+.console-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.console-form label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin-top: 4px;
+}
+
+.console-form label span {
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: var(--ink-ghost);
+}
+
+.console-form input,
+.console-form textarea {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--bg-sunken);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink);
+  resize: vertical;
+  transition:
+    border-color var(--quick) var(--ease),
+    background var(--quick) var(--ease);
+}
+
+.console-form input:hover:not(:disabled),
+.console-form textarea:hover:not(:disabled) {
+  border-color: var(--ink-ghost);
+}
+
+.console-form input:focus,
+.console-form textarea:focus {
+  outline: none;
+  border-color: var(--selected);
+  background: var(--bg-input);
+  box-shadow: 0 0 0 3px var(--selected-soft);
+}
+
+.console-form input[aria-invalid="true"],
+.console-form textarea[aria-invalid="true"] {
+  border-color: var(--failed-line);
+}
+
+.console-form input::placeholder {
+  color: var(--ink-ghost);
+}
+
+.console-form input:disabled,
+.console-form textarea:disabled {
+  opacity: 0.55;
+}
+
+.console-limit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.console-limit label {
+  margin-top: 0;
+  flex: 1;
+}
+
+.console-limit input {
+  width: 84px;
+  flex: none;
+}
+
+.console-help {
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-ghost);
+}
+
+.console-invalid {
+  color: var(--failed) !important;
+}
+
+.console-submit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 11px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--selected-line);
+  background: var(--selected-soft);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--selected);
+  transition:
+    background var(--quick) var(--ease),
+    border-color var(--quick) var(--ease),
+    color var(--quick) var(--ease);
+}
+
+.console-submit i {
+  font-family: var(--mono);
+  font-style: normal;
+  opacity: 0.7;
+}
+
+.console-submit:hover:not(:disabled) {
+  background: var(--selected);
+  border-color: var(--selected);
+  color: #04141a;
+}
+
+.console-submit:disabled {
+  background: var(--bg-sunken);
+  border-color: var(--line);
+  color: var(--ink-ghost);
+}
+
+.console-stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-raised);
+  font-size: 12px;
+  color: var(--ink-dim);
+  transition:
+    border-color var(--quick) var(--ease),
+    color var(--quick) var(--ease),
+    background var(--quick) var(--ease);
+}
+
+.console-stage i {
+  font-family: var(--mono);
+  font-style: normal;
+  color: var(--staged);
+}
+
+.console-stage:hover:not(:disabled) {
+  border-color: var(--staged-line);
+  background: var(--staged-soft);
+  color: var(--ink);
+}
+
+.console-stage:disabled {
+  color: var(--ink-ghost);
+  border-color: var(--line-faint);
+}
+
+/* ── staged batch ───────────────────────────────────────────────────── */
+
+.console-batch {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px;
+  border: 1px solid var(--staged-line);
+  border-radius: var(--r);
+  background: var(--staged-soft);
+}
+
+.console-batch-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.console-batch-head strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--staged);
+}
+
+.console-batch-head span {
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.console-batch > p {
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+
+.console-batch ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.console-batch li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--r-sm);
+  background: #0b0d12aa;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  min-width: 0;
+}
+
+.console-batch li span {
+  color: var(--staged);
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-batch li code {
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.console-batch-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.console-batch-actions button {
+  flex: 1;
+  padding: 8px;
+  border-radius: var(--r);
+  font-size: 12px;
+  font-weight: 600;
+  transition:
+    background var(--quick) var(--ease),
+    color var(--quick) var(--ease);
+}
+
+.console-batch-actions button:first-child {
+  background: var(--committed);
+  color: #042015;
+}
+
+.console-batch-actions button:first-child:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--committed) 82%, #fff);
+}
+
+.console-batch-actions button:last-child {
+  border: 1px solid var(--line-strong);
+  color: var(--ink-dim);
+}
+
+.console-batch-actions button:last-child:hover:not(:disabled) {
+  border-color: var(--failed-line);
+  color: var(--failed);
+}
+
+.console-batch-actions button:disabled {
+  opacity: 0.5;
+}
+
+/* ── feedback ───────────────────────────────────────────────────────── */
+
+.console-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 20px;
+}
+
+.console-feedback p {
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.console-idle {
+  color: var(--ink-ghost);
+  font-family: var(--mono);
+  font-size: 10px !important;
+  letter-spacing: 0.03em;
+}
+
+.console-success {
+  color: var(--committed);
+}
+
+.console-error {
+  color: var(--failed);
+}
+
+.console-read {
+  display: block;
+  padding: 9px 11px;
+  border-radius: var(--r);
+  border: 1px solid var(--selected-line);
+  background: var(--selected-soft);
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  word-break: break-word;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.console-read em {
+  color: var(--ink-faint);
+}
+
+/* ── range results ──────────────────────────────────────────────────── */
+
+.console-results {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+
+.console-results h3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--ink-dim);
+  font-size: 11px;
+}
+
+.console-results h3 em {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--ink-ghost);
+}
+
+.console-results ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.console-results li {
+  padding: 6px 8px;
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+  min-width: 0;
+}
+
+.console-results li button {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  min-width: 0;
+}
+
+.console-results li button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.console-results li button small {
+  color: var(--selected);
+  flex: none;
+  font-size: 9.5px;
+}
+
+.console-results li button:hover:not(:disabled) span {
+  color: var(--selected);
+}
+
+.console-results li code {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-ghost);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.console-next {
+  align-self: flex-start;
+  padding: 6px 10px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-dim);
+  transition:
+    border-color var(--quick) var(--ease),
+    color var(--quick) var(--ease);
+}
+
+.console-next:hover:not(:disabled) {
+  border-color: var(--selected-line);
+  color: var(--selected);
+}
+
+/* ── utilities ──────────────────────────────────────────────────────── */
+
+.console-utilities {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: auto;
+  padding-top: 11px;
+  border-top: 1px solid var(--line);
+}
+
+.console-utility {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  transition:
+    border-color var(--quick) var(--ease),
+    background var(--quick) var(--ease);
+}
+
+.console-utility b {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-dim);
+}
+
+.console-utility small {
+  font-size: 9.5px;
+  color: var(--ink-ghost);
+}
+
+.console-utility:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--bg-raised);
+}
+
+.console-utility:hover:not(:disabled) b {
+  color: var(--ink);
+}
+
+.console-utility:disabled {
+  opacity: 0.45;
+}

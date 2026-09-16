@@ -1,8 +1,5 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import "@fontsource-variable/manrope";
-import "@fontsource-variable/jetbrains-mono";
-import "./style.css";
 import ReplayApp, { readBundle } from "./ReplayApp";
 
 const root = ReactDOM.createRoot(document.getElementById("root")!);

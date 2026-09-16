@@ -34,38 +34,54 @@ try {
     const remaining = begin + seconds * 1000 - Date.now();
     if (remaining > 0) await page.waitForTimeout(remaining);
   };
+  // Clicking through the DOM keeps the viewport where it was put; Playwright's
+  // own click scrolls the target into view and would pan the recording.
+  const press = (pattern) =>
+    page.evaluate((source) => {
+      const match = new RegExp(source);
+      const button = [...document.querySelectorAll("button")].find((element) =>
+        match.test(element.getAttribute("aria-label") || element.textContent),
+      );
+      if (!button) throw new Error(`No button matching ${source}`);
+      button.click();
+    }, pattern.source);
+
+  // 0-3s  the masthead states what this is
   await at(3);
   await page.evaluate(() =>
     window.scrollTo({
-      top: document.getElementById("workspace").offsetTop - 20,
+      top: document.getElementById("workspace").offsetTop - 62,
       behavior: "smooth",
     }),
   );
-  await at(4);
-  await page.getByRole("button", { name: /^Step 2:/ }).click();
-  await at(7);
-  await page.getByRole("button", { name: /^Step 3:/ }).click();
-  await at(8);
+  // 4-10s  one leaf fills, two puts wait in memory, the split commits
+  await at(4.5);
+  await press(/^Step 2:/);
+  await at(7.5);
+  await press(/^Step 3:/);
+  await at(9);
   await page.screenshot({ path: resolve(root, "docs/media/walnut-demo.png") });
-  await at(10);
-  await page
-    .getByRole("button", { name: "Inspect leaf page 2", exact: true })
-    .click();
-  await at(12);
-  await page.getByRole("button", { name: /02 A commit survives/ }).click();
-  await page.getByRole("button", { name: /^Step 2:/ }).click();
-  await at(14);
-  await page.getByRole("button", { name: /^Step 3:/ }).click();
-  await at(18);
-  await page.getByRole("button", { name: /^Step 4:/ }).click();
+  await at(11);
+  // 11-13s  the new right-hand leaf, inspected
+  await press(/^Inspect leaf page 2$/);
+  await at(13);
+  // 13-22s  an acknowledged commit, a terminated process, a recovered tree
+  await press(/A commit survives/);
+  await press(/^Step 2:/);
+  await at(15);
+  await press(/^Step 3:/);
+  await at(18.5);
+  await press(/^Step 4:/);
   await at(22);
-  await page.getByRole("button", { name: /03 The file catches up/ }).click();
-  await page.getByRole("button", { name: /^Step 2:/ }).click();
+  // 22-27s  the log drains into the main file
+  await press(/The file catches up/);
+  await press(/^Step 2:/);
   await at(24);
-  await page.getByRole("button", { name: /^Step 3:/ }).click();
+  await press(/^Step 3:/);
+  // 27-31s  the bytes behind all of it
   await at(27);
-  await page.locator(".inspect-hex summary").click();
-  await page.locator(".byte-inspector").scrollIntoViewIfNeeded();
+  await page.locator(".inspect-hex > summary").click();
+  await page.locator(".byte-view").scrollIntoViewIfNeeded();
   await at(31);
 } finally {
   await context.close();

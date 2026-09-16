@@ -1,0 +1,411 @@
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+}
+
+.timeline-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.timeline-head h2 {
+  margin-top: 3px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.player-state {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-faint);
+  padding: 4px 9px;
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+  white-space: nowrap;
+}
+
+.timeline-note {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--ink-ghost);
+  max-width: 44ch;
+  line-height: 1.5;
+}
+
+/* ── recorded steps ─────────────────────────────────────────────────── */
+
+.timeline-steps {
+  display: grid;
+  grid-template-columns: repeat(var(--steps), minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  position: relative;
+}
+
+.timeline-steps::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 13px;
+  height: 1px;
+  background: var(--line);
+}
+
+.timeline-steps li {
+  position: relative;
+  min-width: 0;
+}
+
+.timeline-steps li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 50%;
+  top: 13px;
+  height: 1px;
+  background: transparent;
+  transition: background var(--move) var(--ease);
+}
+
+.timeline-steps li[data-reached]:not(:first-child)::before {
+  background: var(--committed-line);
+}
+
+.timeline-steps li button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  padding: 0 6px 4px;
+  text-align: center;
+  min-width: 0;
+}
+
+.timeline-dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  height: 27px;
+  border-radius: 99px;
+  border: 1px solid var(--line-strong);
+  background: var(--bg-panel);
+  font-size: 10px;
+  color: var(--ink-faint);
+  transition:
+    border-color var(--quick) var(--ease),
+    background var(--quick) var(--ease),
+    color var(--quick) var(--ease);
+}
+
+.timeline-steps li[data-reached] .timeline-dot {
+  border-color: var(--committed-line);
+  color: var(--committed);
+}
+
+.timeline-steps li[data-current] .timeline-dot {
+  border-color: var(--selected);
+  background: var(--selected-soft);
+  color: var(--selected);
+  box-shadow: 0 0 0 4px var(--selected-soft);
+}
+
+.timeline-steps li[data-kind="crashed"][data-reached] .timeline-dot {
+  border-color: var(--failed-line);
+  color: var(--failed);
+}
+
+.timeline-steps li[data-kind="crashed"][data-current] .timeline-dot {
+  border-color: var(--failed);
+  background: var(--failed-soft);
+  color: var(--failed);
+  box-shadow: 0 0 0 4px var(--failed-soft);
+}
+
+.timeline-steps li button strong {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: capitalize;
+  color: var(--ink-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+.timeline-steps li[data-current] button strong {
+  color: var(--ink);
+}
+
+.timeline-steps li button small {
+  font-size: 9px;
+  color: var(--ink-ghost);
+  white-space: nowrap;
+}
+
+.timeline-steps li button:hover:not(:disabled) strong {
+  color: var(--ink-dim);
+}
+
+/* ── transport ──────────────────────────────────────────────────────── */
+
+.timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding-top: 11px;
+  border-top: 1px solid var(--line-faint);
+}
+
+.timeline-transport {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.timeline-transport button {
+  min-width: 32px;
+  height: 31px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-raised);
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 13px;
+  transition:
+    border-color var(--quick) var(--ease),
+    color var(--quick) var(--ease),
+    background var(--quick) var(--ease);
+}
+
+.timeline-transport button:hover:not(:disabled) {
+  border-color: var(--ink-ghost);
+  color: var(--ink);
+}
+
+.timeline-transport button:disabled {
+  color: var(--ink-ghost);
+  opacity: 0.5;
+}
+
+.timeline-play {
+  padding: 0 18px;
+  font-family: var(--sans) !important;
+  font-size: 12.5px !important;
+  font-weight: 600;
+  border-color: var(--selected-line) !important;
+  background: var(--selected-soft) !important;
+  color: var(--selected) !important;
+}
+
+.timeline-play:hover:not(:disabled) {
+  background: var(--selected) !important;
+  color: #04141a !important;
+}
+
+.timeline-speed {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.timeline-speed select {
+  appearance: none;
+  padding: 6px 22px 6px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--bg-input);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  cursor: pointer;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink-faint) 50%),
+    linear-gradient(135deg, var(--ink-faint) 50%, transparent 50%);
+  background-position:
+    calc(100% - 13px) 13px,
+    calc(100% - 9px) 13px;
+  background-size: 4px 4px;
+  background-repeat: no-repeat;
+}
+
+.timeline-controls .timeline-note {
+  margin-left: auto;
+  text-align: right;
+}
+
+/* ── live events ────────────────────────────────────────────────────── */
+
+.work-stream-gap {
+  padding: 8px 11px;
+  border-radius: var(--r);
+  border: 1px solid var(--staged-line);
+  background: var(--staged-soft);
+  font-size: 11.5px;
+  color: var(--staged);
+}
+
+.event-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.event-list li {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 11px;
+  border-radius: var(--r-sm);
+  background: var(--bg-sunken);
+  min-width: 0;
+}
+
+.event-sequence {
+  font-size: 10px;
+  color: var(--ink-ghost);
+  padding-top: 2px;
+  flex: none;
+}
+
+.event-list li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.event-list strong {
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+
+.event-list p {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--ink-faint);
+  margin-top: 2px;
+}
+
+.event-generation {
+  font-size: 10px;
+  color: var(--ink-ghost);
+  padding-top: 2px;
+  flex: none;
+}
+
+.event-list li button {
+  flex: none;
+  padding: 3px 7px;
+  border-radius: var(--r-sm);
+  background: var(--selected-soft);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--selected);
+  transition: background var(--quick) var(--ease);
+}
+
+.event-list li button i {
+  font-style: normal;
+  opacity: 0.6;
+}
+
+.event-list li button:hover:not(:disabled) {
+  background: var(--selected-line);
+  color: var(--ink);
+}
+
+.event-all > summary {
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  padding: 6px 0;
+  list-style: none;
+}
+
+.event-all > summary::-webkit-details-marker {
+  display: none;
+}
+
+.event-all > summary::before {
+  content: "▸ ";
+  color: var(--ink-ghost);
+}
+
+.event-all[open] > summary::before {
+  content: "▾ ";
+}
+
+.event-all > summary:hover {
+  color: var(--ink-dim);
+}
+
+.event-all .event-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding-top: 5px;
+}
+
+@media (max-width: 860px) {
+  .timeline-steps {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+
+  .timeline-steps::before,
+  .timeline-steps li::before {
+    display: none;
+  }
+
+  .timeline-steps li button {
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    text-align: left;
+    padding: 5px 8px;
+    border-radius: var(--r-sm);
+  }
+
+  .timeline-steps li[data-current] button {
+    background: var(--bg-sunken);
+  }
+
+  .timeline-steps li button small {
+    margin-left: auto;
+  }
+
+  .timeline-controls .timeline-note {
+    margin-left: 0;
+    text-align: left;
+    flex-basis: 100%;
+  }
+}

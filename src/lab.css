@@ -1,0 +1,685 @@
+@import "./theme.css";
+
+.lab {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(1200px 500px at 50% -180px, #101620 0%, transparent 70%),
+    var(--bg-page);
+}
+
+/* ── header ─────────────────────────────────────────────────────────── */
+
+.lab-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 20px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-void) 88%, transparent);
+  backdrop-filter: blur(12px);
+}
+
+.lab-brand {
+  display: flex;
+  align-items: center;
+  flex: none;
+  text-decoration: none;
+  color: inherit;
+}
+
+.lab-brand .brand-lockup {
+  display: block;
+  width: 160px;
+  height: auto;
+}
+
+.lab-brand .brand-mark {
+  display: none;
+  width: 32px;
+  height: 32px;
+}
+
+@media (max-width: 600px) {
+  .lab-brand .brand-lockup {
+    display: none;
+  }
+  .lab-brand .brand-mark {
+    display: block;
+  }
+}
+
+.lab-tagline {
+  padding-left: 16px;
+  border-left: 1px solid var(--line);
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.lab-status-chip {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.lab-status-chip > span[role="status"],
+.lab-status-chip > span.lab-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.lab-status-chip > span[role="status"]::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: var(--failed);
+}
+
+.lab-status-chip > span.is-connected {
+  color: var(--committed);
+}
+
+.lab-status-chip > span.is-connected::before {
+  background: var(--committed);
+  box-shadow: 0 0 0 3px var(--committed-soft);
+}
+
+.lab-stack {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--ink-ghost);
+  white-space: nowrap;
+}
+
+/* ── main ───────────────────────────────────────────────────────────── */
+
+.lab main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  padding: var(--gap) 20px 28px;
+  max-width: 1760px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* ── status strip ───────────────────────────────────────────────────── */
+
+.lab-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.lab-modes {
+  display: flex;
+  gap: 3px;
+  padding: 5px;
+  flex: none;
+}
+
+.lab-modes button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: var(--r);
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-faint);
+  transition:
+    background var(--quick) var(--ease),
+    color var(--quick) var(--ease);
+}
+
+.lab-modes button::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 99px;
+  background: var(--ink-ghost);
+  transition: background var(--quick) var(--ease);
+}
+
+.lab-modes button:hover:not(:disabled) {
+  color: var(--ink-dim);
+}
+
+.lab-modes button[aria-pressed="true"] {
+  background: var(--bg-raised);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+.lab-modes button[aria-pressed="true"]:first-child::before {
+  background: var(--committed);
+  box-shadow: 0 0 0 3px var(--committed-soft);
+}
+
+.lab-modes button[aria-pressed="true"]:last-child::before {
+  background: var(--checkpointed);
+  box-shadow: 0 0 0 3px var(--checkpointed-soft);
+}
+
+.lab-modes button em {
+  font-style: normal;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--ink-ghost);
+}
+
+.lab-identity {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 12px;
+  border-left: 1px solid var(--line);
+  min-width: 0;
+  flex: 1;
+}
+
+.lab-identity strong {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lab-identity small {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+}
+
+.lab-metrics {
+  display: flex;
+  margin: 0;
+  flex: none;
+}
+
+.lab-metrics > div {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 7px 13px;
+  border-left: 1px solid var(--line);
+  min-width: 0;
+}
+
+.lab-metrics dt {
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-ghost);
+  white-space: nowrap;
+}
+
+.lab-metrics dd {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.lab-metrics dd em {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-faint);
+  margin-left: 0;
+}
+
+/* ── alerts ─────────────────────────────────────────────────────────── */
+
+.lab-alert {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 11px 15px;
+  border-radius: var(--r-lg);
+  border: 1px solid var(--failed-line);
+  background: var(--failed-soft);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+
+.lab-alert strong {
+  color: var(--failed);
+}
+
+.lab-alert[data-kind="waiting"] {
+  border-color: var(--staged-line);
+  background: var(--staged-soft);
+}
+
+.lab-alert[data-kind="waiting"] strong {
+  color: var(--staged);
+}
+
+.lab-alert button {
+  margin-left: auto;
+  flex: none;
+  padding: 7px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--line-strong);
+  background: var(--bg-raised);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  transition: border-color var(--quick) var(--ease);
+}
+
+.lab-alert button:hover:not(:disabled) {
+  border-color: var(--ink-ghost);
+}
+
+.lab-notice {
+  padding: 9px 14px;
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: var(--bg-panel);
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+
+.lab-notice[data-kind="error"] {
+  border-color: var(--failed-line);
+  background: var(--failed-soft);
+  color: var(--failed);
+}
+
+/* ── grid ───────────────────────────────────────────────────────────── */
+
+.lab-grid {
+  display: grid;
+  grid-template-columns: var(--rail) minmax(0, 1fr) var(--inspect);
+  gap: var(--gap);
+  align-items: start;
+}
+
+.lab-stage {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.lab-stage .structure {
+  min-height: 460px;
+}
+
+/* The inspector follows a tall stage instead of stranding the reader. */
+@media (min-width: 1241px) {
+  .lab-grid > .inspector,
+  .lab-grid > .inspect-placeholder {
+    position: sticky;
+    top: 66px;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+  }
+}
+
+/* ── empty / connecting ─────────────────────────────────────────────── */
+
+.lab-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 460px;
+  padding: 40px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+}
+
+.lab-empty h2 {
+  font-size: 19px;
+  color: var(--ink-dim);
+}
+
+.lab-empty p {
+  font-size: 12.5px;
+  color: var(--ink-faint);
+  max-width: 44ch;
+}
+
+.lab-empty-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  opacity: 0.4;
+}
+
+.lab-empty-figure i {
+  display: block;
+  width: 84px;
+  height: 26px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+}
+
+.lab-empty-figure span {
+  width: 1px;
+  height: 18px;
+  background: var(--line-strong);
+}
+
+.lab-empty-figure div {
+  display: flex;
+  gap: 12px;
+}
+
+.lab-empty-figure div i {
+  width: 62px;
+}
+
+.inspect-placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+}
+
+.inspect-placeholder p {
+  font-size: 12px;
+  color: var(--ink-faint);
+  line-height: 1.5;
+}
+
+.inspect-placeholder pre {
+  margin: 0;
+  padding: 11px;
+  border-radius: var(--r);
+  background: var(--bg-sunken);
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.7;
+  color: var(--ink-ghost);
+}
+
+.inspect-placeholder pre b {
+  color: var(--ink-faint);
+  font-weight: 400;
+}
+
+/* ── advanced ───────────────────────────────────────────────────────── */
+
+.lab-advanced {
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-panel);
+  overflow: hidden;
+}
+
+.lab-advanced > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 11px;
+  padding: 13px 16px;
+  cursor: pointer;
+  list-style: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-dim);
+  transition: background var(--quick) var(--ease);
+}
+
+.lab-advanced > summary::-webkit-details-marker {
+  display: none;
+}
+
+.lab-advanced > summary::before {
+  content: "▸";
+  color: var(--ink-ghost);
+  font-size: 10px;
+  transition: transform var(--quick) var(--ease);
+}
+
+.lab-advanced[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.lab-advanced > summary:hover {
+  background: var(--bg-raised);
+  color: var(--ink);
+}
+
+.lab-advanced > summary span {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--ink-ghost);
+}
+
+/* ── footer ─────────────────────────────────────────────────────────── */
+
+.lab-footer {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-ghost);
+  flex-wrap: wrap;
+}
+
+.lab-footer img {
+  width: 20px;
+  height: 20px;
+  vertical-align: -3px;
+  margin-right: 8px;
+}
+
+.lab-footer > span:last-child {
+  margin-left: auto;
+}
+
+.lab-footer i {
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  border-radius: 99px;
+  background: var(--ink-ghost);
+  vertical-align: 3px;
+  margin: 0 9px;
+}
+
+/* ── responsive ─────────────────────────────────────────────────────── */
+
+@media (max-width: 1440px) {
+  :root {
+    --rail: 230px;
+    --inspect: 300px;
+  }
+}
+
+/* Below three comfortable columns the stage takes the full width and the two
+   side panels share the row beneath it. The database stays the largest thing
+   on screen at every size. */
+@media (max-width: 1240px) {
+  .lab-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lab-stage {
+    grid-column: 1 / -1;
+    order: 1;
+  }
+
+  .lab-rail {
+    order: 2;
+  }
+
+  .lab-grid > .inspector,
+  .lab-grid > .inspect-placeholder {
+    order: 3;
+  }
+
+  .lab-metrics > div {
+    padding: 10px 13px;
+  }
+
+  .lab-metrics dd {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 900px) {
+  .lab-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .lab-strip {
+    flex-wrap: wrap;
+  }
+
+  .lab-identity {
+    border-left: none;
+    flex-basis: 100%;
+    order: 3;
+    border-top: 1px solid var(--line);
+  }
+
+  .lab-metrics {
+    margin-left: auto;
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 760px) {
+  .lab main {
+    padding: 12px 12px 24px;
+  }
+
+  .lab-header {
+    padding: 10px 12px;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .lab-tagline,
+  .lab-stack {
+    display: none;
+  }
+
+  .lab-modes {
+    flex: 1;
+  }
+
+  .lab-modes button {
+    flex: 1;
+    justify-content: center;
+    padding: 8px 6px;
+    font-size: 11.5px;
+  }
+
+  .lab-metrics {
+    flex-basis: 100%;
+    border-top: 1px solid var(--line);
+  }
+
+  .lab-metrics > div {
+    flex: 1 1 20%;
+    padding: 7px 5px;
+    border-left: 1px solid var(--line-faint);
+  }
+
+  .lab-metrics > div:first-child {
+    border-left: none;
+  }
+
+  .lab-metrics dd {
+    font-size: 15px;
+  }
+
+  .lab-stage .structure {
+    min-height: 380px;
+  }
+
+  .lab-footer > span:last-child {
+    margin-left: 0;
+  }
+}
+
+/* A direct route into the signature experiment from either workspace mode. */
+.watch-split {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--selected-line);
+  border-radius: var(--r);
+  background: var(--selected-soft);
+  color: var(--selected);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.watch-split:hover:not(:disabled) {
+  background: var(--selected);
+  color: #04141a;
+}
+.watch-split:disabled {
+  opacity: 0.5;
+}
+@media (max-width: 600px) {
+  .lab-status-chip {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 6px;
+  }
+  .lab-status-chip > span[role="status"] {
+    font-size: 9px;
+  }
+  .lab-identity small {
+    font-size: 9px;
+    letter-spacing: 0;
+  }
+}

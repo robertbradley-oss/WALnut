@@ -36,14 +36,14 @@ Open **Guided stories**, choose a scenario, and click **Run story**. Each run cr
 - **A commit survives:** commit the split, terminate its process, and recover the exact acknowledged tree from the WAL.
 - **The file catches up:** checkpoint the committed pages, see the log shrink to its header, and reopen the database.
 
-Use **Play recording**, **Pause**, **Previous/Next step**, **Speed**, or a timeline step. **Reset recording** returns to the first capture; **Run story again** creates a fresh engine run. Tree zoom and **Fit** change the view. Select any page to inspect its records, routing, or **raw bytes**.
+Use **Play recording**, **Pause**, **Previous/Next step**, **Speed**, or a timeline step. **Reset recording** returns to the first capture; **Run story again** creates a fresh engine run. Tree zoom and **Fit** change the view. Select any page — on the stage, in the page map, or through **PAGE EXPLORER** — to inspect its records, routing table, or **Raw bytes**.
 
 Recorded playback stays available when the engine disconnects. It changes only the view; **Live database** returns to the actual open database. The stopped-process frame explicitly holds the last pre-termination capture. The recording contains operation snapshots, not invented intermediate disk states. Reloading the browser clears the in-memory recording; saved scenario files remain available at the path under **Recorded run evidence**.
 
 ## Grow the tree, then interrupt a split
 
 1. Click **Insert 64 sample records** twice. Real 64-byte keys and 1,000-byte values fill 4 KB pages, split leaves and branches, and produce a three-level tree.
-2. Select a branch to explore its children. Use **PAGE EXPLORER** to inspect any leaf, internal routing page, or page 0 metadata.
+2. Walk the **PAGE MAP** with the arrow keys, or select a branch on the stage to descend into its children. The level chips at each row's edge jump to the pages the stage cannot draw at this width. **PAGE EXPLORER** reaches any leaf, internal routing page, or page 0 metadata directly.
 3. Run **GET** for a stored key. The search path shows the actual pages visited. **SCAN** returns ordered records across leaf links; select a result to inspect its source page.
 4. Expand **Advanced crash lab**, choose **Root split** and **After commit**. A real child is killed after acknowledging two puts that split a leaf, split its parent, and create a new root.
 5. Inspect the receipt: 116 → 118 records, 59 → 62 node pages, height 2 → 3. Every key and value is checked after reopening. **Before commit** keeps the original tree intact.
@@ -53,8 +53,8 @@ The lab creates a new disposable database for each run. It also offers first-lea
 ## Follow a batch into the log
 
 1. In **PUT**, stage `alpha` → `one` and `beta` → `two` with **Stage in batch**. The record table and GET still show committed data.
-2. **Commit batch.** Both records appear in one generation. The log lane shows the transaction and every changed page ID, including metadata.
-3. Select a record, expand **Inspect raw bytes**, and compare **Committed page** with **Checkpoint page**. Each label reports that individual page's generation. **Checkpoint** brings the main file up to date and resets the WAL to its permanent header.
+2. **Commit batch.** Both records appear in one generation. The operation bar names the generation change, the page images written, and the bytes appended; the durability rail shows the transaction and every changed page ID, including metadata.
+3. Select a record, expand **Raw bytes**, and compare **Committed page** with **Checkpoint page**. Each label reports that individual page's generation. **Checkpoint** brings the main file up to date and resets the WAL to its permanent header.
 
 The command-line interface uses the same engine. Stop the inspector before opening its file through the CLI, or use a separate file:
 
@@ -114,7 +114,7 @@ npm run test:e2e
 
 Linux browser setup may also need `node scripts/browser.mjs install --with-deps chromium`. Browser files stay in `.tools/browsers` by default. End-to-end tests create isolated real databases in `work/` and run the built Rust server and inspector.
 
-The GitHub Actions workflow defines the same checks for Windows and Linux. Hosted CI has not run for this local checkpoint; see [phase 5 verification](stage-5.md) for observed results and remaining review.
+The GitHub Actions workflow runs the same checks for Windows and Linux before deploying the portable demo. See [release verification](release-candidate.md) for observed results and remaining review.
 
 ## Measure it
 
@@ -137,4 +137,4 @@ Live polling reports delayed responses and events skipped outside the retained 1
 - `src`: live inspector
 - `tests`: browser and API integration checks
 
-See [Phase 6 verification](stage-6.md) for the current release and walkthrough evidence.
+See [release verification](release-candidate.md) for the current release and walkthrough evidence.

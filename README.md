@@ -1,16 +1,25 @@
-# WALnut
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="public/brand/walnut-lockup-dark.svg">
+    <img src="public/brand/walnut-lockup-light.svg" alt="WALnut" width="320">
+  </picture>
+</h1>
 
 **A tiny database with its internals on display.**
 
-A real Rust key/value engine, a page-based B+ tree, and a write-ahead log you can inspect. Stage two writes, watch a leaf split, terminate the committed transaction's process, and recover the exact tree. Every page, log entry, and hex byte comes from the engine.
+Follow two writes through a B+ tree split, a committed write-ahead log, and recovery after process termination. WALnut is a Rust key/value database with a live inspector and a portable replay of real engine runs. Every page, log entry, and hex byte comes from the engine.
 
-[![WALnut: a committed split, its pages, and the write-ahead log](docs/media/walnut-demo.png)](docs/media/walnut-demo.webm)
+[![A committed page split: the operation bar names the generation change and the new root, the B+ tree shows one leaf becoming two, and the durability rail shows the log holding one transaction the main file does not have](docs/media/walnut-demo.png)](docs/media/walnut-demo.webm)
 
-**[Watch the 30-second recording](docs/media/walnut-demo.webm)** · [How recovery works](docs/tree-contract.md) · [Engineering case study](docs/case-study.md) · [Measured performance](docs/performance.md)
+**[Explore the browser demo](https://robertbradley-oss.github.io/WALnut/)** · [Watch the 30-second recording](docs/media/walnut-demo.webm) · [Engineering case study](docs/case-study.md) · [Measured performance](docs/performance.md)
+
+Every screen answers four questions: what operation you are looking at, what it changed, what is durable right now, and what you can inspect next.
+
+![The live workbench after a point lookup: the page map, tree, search path, record list and byte layout all highlight the same key](docs/media/walnut-live.png)
 
 ## Try it
 
-**Just explore:** open the versioned `walnut-0.1.0-demo.html` from a prepared release. It contains all three engine recordings, fonts, and controls. No install or server is needed. [Build the portable demo yourself](docs/replay.md).
+**Just explore:** [open the browser demo](https://robertbradley-oss.github.io/WALnut/), or download `walnut-0.1.0-demo.html` from the [v0.1.0 release](https://github.com/robertbradley-oss/WALnut/releases/tag/v0.1.0) and open it offline. Both contain the same three kinds of real engine recordings, fonts, and controls. The demo is recorded exploration; running the engine locally lets you write your own data. [Build the portable demo yourself](docs/replay.md).
 
 **Run the engine:** install **Node 24.19.0** and **Rust 1.98.1**, plus a native linker (MSVC Build Tools on Windows; a C toolchain on Linux).
 
@@ -40,7 +49,7 @@ Choose **Guided stories** in the live inspector and **Run story**, or choose a s
 | **A commit survives**   | A real child process is terminated after commit. A new engine restores the same five records and split from the WAL. |
 | **The file catches up** | Checkpoint copies committed pages into the main file; the WAL returns to its 64-byte header.                         |
 
-Use the timeline to step, play, pause, change speed, or reset. Select a tree page, then expand **Inspect raw bytes** to compare its committed and checkpoint images. Recorded playback changes the view; the live inspector accepts new operations through **Live database**.
+Use the timeline to step, play, pause, change speed, or reset. Select a tree page, then expand **Raw bytes** to compare its committed and checkpoint images. Recorded playback changes the view only; the live inspector accepts new operations through **Live database**.
 
 ## Under the hood
 
@@ -72,7 +81,7 @@ npm run test:e2e
 npm run test:replay
 ```
 
-Linux browser setup may need `node scripts/browser.mjs install --with-deps chromium`. Tests use disposable files under `work/`. The [release notes](docs/stage-6.md) distinguish observed Windows/Linux checks from hosted CI and visitor feedback.
+Linux browser setup may need `node scripts/browser.mjs install --with-deps chromium`. Tests use disposable files under `work/`. The [release verification](docs/release-candidate.md) distinguishes current checks, earlier platform evidence, and visitor feedback.
 
 ```sh
 npm run benchmark          # Engine measurements with raw samples
