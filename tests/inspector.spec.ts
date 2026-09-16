@@ -473,6 +473,9 @@ test("narrow layout and reduced motion retain keyboard access", async ({
   await page
     .getByRole("textbox", { name: "Key", exact: true })
     .fill("keyboard");
+  await expect(
+    page.getByRole("button", { name: "Commit this put", exact: true }),
+  ).toBeEnabled();
   await page.getByRole("textbox", { name: "Key", exact: true }).press("Enter");
   await expect(page.getByTestId("record-count")).toHaveText("01");
   expect(

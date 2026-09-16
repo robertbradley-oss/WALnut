@@ -123,6 +123,12 @@ The trace is optional and capped at 128 events. Snapshot frame descriptions are 
 
 `page_id` selects the local `records`, `bytes`, `page_kind`, `page_generation`, `used_bytes`, and `checksum`; internal/metadata pages have no leaf records. `checkpoint_bytes` can be null for a newly allocated page or invalid checkpoint. `staged_used_bytes` totals used node bytes in the candidate tree; it is not the selected page's occupancy. The bridge adds the database filename.
 
+## Portable recording bundle
+
+The self-contained replay embeds bundle `schema_version: 1`. `source` contains the package version, 40-character Git revision, dirty-source flag, ISO capture time, platform, engine executable SHA256, and a description of path redaction. `stories` contains exactly one capture of each scenario (`split`, `recovery`, `checkpoint`); `notices` retains the embedded libraries' licenses.
+
+Each story retains story schema 1 and its source engine/storage/page versions, workload, run ID, frames, and optional process receipt. A frame has its operation kind, command, explanation, focus page, global snapshot, and all captured page images. Snapshot/page validation uses the same protocol checks as the live workbench. No database format changes are introduced by this wrapper. [Export and reproduction details](replay.md).
+
 ## Errors
 
 Input and allocation errors occur before persistence: `invalid_key`, `invalid_value`, `invalid_batch`, `invalid_range`, `database_full`, `generation_limit`, and `page_not_found`. `batch_pending` preserves staging; `checkpoint_required` retains the pending candidate for retry. `database_locked` rejects a second owner. `missing_wal`, `identity_mismatch`, `wal_gap`, `metadata_mismatch`, `corrupt_wal`, `corrupt_tree`, and `unrecoverable_tree` fail closed. Unsupported/invalid file headers are rejected.
