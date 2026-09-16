@@ -2,139 +2,93 @@
 
 **A tiny database with its internals on display.**
 
-Grow a B+ tree, follow a key through its pages, then interrupt a split and inspect what recovery brings back. The tree, log entries, records, and hex bytes come from a real Rust engine.
+A real Rust key/value engine, a page-based B+ tree, and a write-ahead log you can inspect. Stage two writes, watch a leaf split, terminate the committed transaction's process, and recover the exact tree. Every page, log entry, and hex byte comes from the engine.
 
-WALnut is a local learning and portfolio project. **Phase 5 adds reproducible benchmarks, mixed-workload fault testing, and large-tree inspector profiling** to the coordinated workbench and three replayable engine stories.
+[![WALnut: a committed split, its pages, and the write-ahead log](docs/media/walnut-demo.png)](docs/media/walnut-demo.webm)
 
-## Run locally
+**[Watch the 30-second recording](docs/media/walnut-demo.webm)** · [How recovery works](docs/tree-contract.md) · [Engineering case study](docs/case-study.md) · [Measured performance](docs/performance.md)
 
-Requirements: **Node 24.19.0** and **Rust 1.98.1**. A standard Rust installation needs its platform's linker (MSVC Build Tools on Windows, a C toolchain on Linux). Package and Cargo lockfiles pin dependencies. Rust and Node version files pin toolchains.
+## Try it
+
+**Just explore:** open the versioned `walnut-0.1.0-demo.html` from a prepared release. It contains all three engine recordings, fonts, and controls. No install or server is needed. [Build the portable demo yourself](docs/replay.md).
+
+**Run the engine:** install **Node 24.19.0** and **Rust 1.98.1**, plus a native linker (MSVC Build Tools on Windows; a C toolchain on Linux).
 
 ```sh
 npm ci
 npm run dev
 ```
 
-Open **http://127.0.0.1:5173**. The command starts the Rust bridge and Vite, creates `data/walnut-v3.db` and its `.wal` companion if missing, and keeps existing data. Stop both with Ctrl+C.
+Open **http://127.0.0.1:5173**. This starts the Rust engine and React inspector, creates `data/walnut-v3.db` and its companion WAL if absent, and preserves existing records. Stop both with Ctrl+C. One process owns a database at a time.
 
-For the built inspector, served directly by Rust:
+For the production build served by Rust:
 
 ```sh
 npm run build
 npm start
 ```
 
-Open **http://127.0.0.1:7878**. Only run one mode against this database at a time. The second owner is rejected by a file lock.
+Open **http://127.0.0.1:7878**. [Full CLI and inspector guide →](docs/usage.md)
 
-This development checkout also supports an optional local Windows LLVM/Rust installation under `.tools/`, detected by the Node wrappers. It does not modify the user's PATH. A fresh checkout can use the standard toolchains above; `.tools/` is not part of the repository.
+## Three ways inside
 
-## Follow three real engine stories
+Choose **Guided stories** in the live inspector and **Run story**, or choose a scenario in the portable replay. Each scenario uses a synthetic, disposable database.
 
-Open **Guided stories**, choose a scenario, and click **Run story**. Each run creates a disposable database and captures its verified pages after observable operations.
+| Story                   | What to inspect                                                                                                      |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **A page splits**       | Two staged puts turn one leaf into two leaves and a root, committed together.                                        |
+| **A commit survives**   | A real child process is terminated after commit. A new engine restores the same five records and split from the WAL. |
+| **The file catches up** | Checkpoint copies committed pages into the main file; the WAL returns to its 64-byte header.                         |
 
-- **A page splits:** three full-size records fit in one leaf. Stage two more puts, commit, and inspect the resulting root and two leaves.
-- **A commit survives:** commit the split, terminate its process, and recover the exact acknowledged tree from the WAL.
-- **The file catches up:** checkpoint the committed pages, see the log shrink to its header, and reopen the database.
+Use the timeline to step, play, pause, change speed, or reset. Select a tree page, then expand **Inspect raw bytes** to compare its committed and checkpoint images. Recorded playback changes the view; the live inspector accepts new operations through **Live database**.
 
-Use **Play recording**, **Pause**, **Previous/Next step**, **Speed**, or a timeline step. **Reset recording** returns to the first capture; **Run story again** creates a fresh engine run. Tree zoom and **Fit** change the view. Select any page to inspect its records, routing, or **raw bytes**.
+## Under the hood
 
-Recorded playback stays available when the engine disconnects. It changes only the view; **Live database** returns to the actual open database. The stopped-process frame explicitly holds the last pre-termination capture. The recording contains operation snapshots, not invented intermediate disk states. Reloading the browser clears the in-memory recording; saved scenario files remain available at the path under **Recorded run evidence**.
+- **A B+ tree built here:** 4 KB pages, exact separators, linked leaves, byte-based splits, cascading root changes, point lookups, and ordered scans.
+- **Atomic recovery:** complete changed-page images and root/allocation metadata in a checksummed redo log; sync and read-back before commit acknowledgment.
+- **Failures you can reproduce:** short writes, failed syncs, interrupted checkpoint/reset, corrupt input, real process termination, and generated workloads checked against an independent ordered map.
+- **An inspectable engine:** verified page bytes, actual search paths, write/log/checkpoint state, captured process receipts, and tracing you can turn off.
+- **Portable evidence:** one HTML replay with three real recordings, source revision, build hash, and retained license notices.
 
-## Grow the tree, then interrupt a split
+The subtle case: a successful checkpoint can leave an obsolete, valid WAL prefix after a failed reset. Recovery must make the _next_ commit safe too. [Read the worked example and regression test](docs/case-study.md).
 
-1. Click **Insert 64 sample records** twice. Real 64-byte keys and 1,000-byte values fill 4 KB pages, split leaves and branches, and produce a three-level tree.
-2. Select a branch to explore its children. Use **PAGE EXPLORER** to inspect any leaf, internal routing page, or page 0 metadata.
-3. Run **GET** for a stored key. The search path shows the actual pages visited. **SCAN** returns ordered records across leaf links; select a result to inspect its source page.
-4. Expand **Advanced crash lab**, choose **Root split** and **After commit**. A real child is killed after acknowledging two puts that split a leaf, split its parent, and create a new root.
-5. Inspect the receipt: 116 → 118 records, 59 → 62 node pages, height 2 → 3. Every key and value is checked after reopening. **Before commit** keeps the original tree intact.
+### Bounds and guarantees
 
-The lab creates a new disposable database for each run. It also offers first-leaf splits and interruption during checkpoint or log reset. It retains the files and reports their path for CLI inspection.
+Keys are 1–64 UTF-8 bytes; values are 0–1,024 bytes. Batches contain 1–64 puts. The tree is bounded to 1,024 node pages plus metadata and stays in memory. Writes clone and validate a candidate tree; checkpoints are manual. There is no deletion, SQL, replication, or concurrent writer.
 
-## Follow a batch into the log
+Acknowledged commits recover whole under the [documented failure contract](docs/tree-contract.md). A valid commit whose reply was interrupted may also survive. Tests cover process termination and modeled storage failures; they do not establish physical power-loss survival on every device/filesystem. CRC32 detects accidental corruption, not tampering.
 
-1. In **PUT**, stage `alpha` → `one` and `beta` → `two` with **Stage in batch**. The record table and GET still show committed data.
-2. **Commit batch.** Both records appear in one generation. The log lane shows the transaction and every changed page ID, including metadata.
-3. Select a record, expand **Inspect raw bytes**, and compare **Committed page** with **Checkpoint page**. Each label reports that individual page's generation. **Checkpoint** brings the main file up to date and resets the WAL to its permanent header.
+### Measured, with context
 
-The command-line interface uses the same engine. Stop the inspector before opening its file through the CLI, or use a separate file:
+At 1,792 records on the documented Windows machine, tracing-off median point reads were about **0.4 µs**, a durable single-record update **6.1 ms**, and a durable 16-update batch **6.7 ms**. Reads use the resident tree; writes include the normal sync/read-back path. These are different workloads, not a database comparison. [Method, latency distributions, hardware, raw samples, and tracing overhead →](docs/performance.md)
 
-```sh
-npm run walnut -- create data/example.db
-npm run walnut -- put data/example.db greeting "hello, storage"
-npm run walnut -- get data/example.db greeting
-npm run walnut -- inspect data/example.db
-npm run walnut -- grow data/example.db
-npm run walnut -- grow data/example.db
-npm run walnut -- range data/example.db "" --limit 20
-npm run walnut -- inspect data/example.db 0
-npm run walnut -- checkpoint data/example.db
-npm run walnut -- lab work/lab after_commit_return root_split
-npm run walnut -- story work/stories split
-npm run walnut -- story work/stories recovery
-npm run walnut -- story work/stories checkpoint
-```
-
-`create` never overwrites an existing file. CLI results and errors are JSON. `get` represents absence with `found: false` and `value: null`.
-
-`batch <file> <json-array>` commits an array of `{"key":"...","value":"..."}` puts. `range` accepts `--end <exclusive-key>` and `--limit <1–256>`; its `next_key` resumes the scan inclusively against current committed data. Empty start includes all keys. `inspect <file> [page-id]` defaults to leaf page 1.
-
-The lab accepts `before_frame`, `after_wal_header`, `after_wal_page:0`, `after_frame`, `after_commit_marker`, `after_wal_sync`, `after_commit_return`, `before_checkpoint_write`, `after_checkpoint_page:3`, `after_checkpoint_write`, `after_checkpoint_sync`, `after_wal_truncate`, and `after_reset_sync`. Its optional workload is `leaf_split` or `root_split` (default). `story <directory> <split|recovery|checkpoint>` returns a complete JSON recording with source metadata, snapshots, every page's captured bytes, and the recovery worker's exit evidence where applicable.
-
-To retain a format-1 standalone page or format-2 pair, stop its owner and upgrade into a **new** format-3 pair:
-
-```sh
-npm run walnut -- upgrade data/walnut-v2.db data/migrated.db
-```
-
-The original stays intact, including any source WAL tail. Migration recovers a memory copy before creating the new pair. Set `WALNUT_DB` to the new database path to inspect it. Keep both current files together; a missing or mismatched WAL is an error.
-
-## What's implemented
-
-- A B+ tree with 4,096-byte leaf/internal pages, exact separators, linked leaves, byte-based splits, cascading root changes, and a dedicated metadata page.
-- Keys of 1–64 UTF-8 bytes; values of 0–1,024 bytes. Keys are case-sensitive and ordered by bytes, without normalization. Updates can grow or shrink values.
-- Point lookups and ordered range scans; structural validation checks ordering, reachability, balanced depth, links, and the complete tree checksum.
-- Atomic batches of 1–64 puts, in-memory staging, committed reads, redo WAL, restart recovery, and manual checkpoints.
-- Matching file identities, transactions containing every changed page and root/allocation metadata, checksummed commit markers, and bounded log reuse.
-- Exclusive database ownership, serialized commands, optional tracing, and an injectable storage boundary.
-- A React workbench with navigable tree pages, search paths, range results, leaf links, WAL lane, staged/committed/checkpointed states, exact hex views, and real subprocess split recovery.
-- Three deterministic recorded stories with playback, stepping, speed, reset, zoom, keyboard controls, reduced motion, and offline inspection of captured pages.
-
-**Bounds:** 1,024 node pages plus metadata; 1–64 puts per batch; 1–256 results per range request; manual checkpoint after 1,024 transactions or 32 MiB of WAL. The complete tree is held in memory and candidate validation examines the whole tree. There is no deletion, space reclamation, SQL, or concurrent writer.
-
-**Persistence boundary:** a commit returns after WAL synchronization and read-back. Within the [tree and failure contract](docs/tree-contract.md), acknowledged commits survive recovery and batches appear whole, including every page in a split. A complete valid commit whose reply was interrupted may also survive. Tests cover process termination and modeled storage failures; they do not establish physical power-loss survival across all devices/filesystems. Failed I/O requires reopen. CRC32 detects accidental corruption, not tampering.
-
-## Verify
+## Verify and reproduce
 
 ```sh
 npm run browser:install
 npm run check
 npm run test:core
 npm run test:e2e
+npm run test:replay
 ```
 
-Linux browser setup may also need `node scripts/browser.mjs install --with-deps chromium`. Browser files stay in `.tools/browsers` by default. End-to-end tests create isolated real databases in `work/` and run the built Rust server and inspector.
-
-The GitHub Actions workflow defines the same checks for Windows and Linux. Hosted CI has not run for this local checkpoint; see [phase 5 verification](docs/stage-5.md) for observed results and remaining review.
-
-## Measure it
+Linux browser setup may need `node scripts/browser.mjs install --with-deps chromium`. Tests use disposable files under `work/`. The [release notes](docs/stage-6.md) distinguish observed Windows/Linux checks from hosted CI and visitor feedback.
 
 ```sh
-npm run benchmark
-npm run profile:inspector
+npm run benchmark          # Engine measurements with raw samples
+npm run profile:inspector  # Large-tree rendering and interaction profile
+npm run build:demo         # Self-contained browser recording
+npm run release:prepare    # Versioned local artifacts from clean source
 ```
-
-The release benchmark checks deterministic datasets of 128, 512, and 1,792 records, with tracing off/on, indexed versus sequential reads, scans, durable updates/batches, checkpoints, and recovery. It records latency distributions, source/environment metadata, and file growth in a fresh `work/` directory. The separate inspector profile uses real 927-page live and 62-page recorded captures. See [results, workload definitions, and reproduction](docs/performance.md).
-
-Live polling reports delayed responses and events skipped outside the retained 128-event window. It keeps the last verified state and rejects snapshots that move backward within the same engine session.
 
 ## Read the implementation
 
-- [Architecture](docs/architecture.md) · [Tree and recovery contract](docs/tree-contract.md)
-- [File, page, WAL, and event formats](docs/file-format.md)
-- [GamePlan](GAMEPLAN.md) · [Roadmap and Astra reasoning levels](ROADMAP.md)
-- `crates/walnut-core`: page codec, B+ tree, WAL, storage boundary, and tests; historical engine under `legacy`
-- `crates/walnut-cli`: CLI and local HTTP bridge
-- `src`: live inspector
-- `tests`: browser and API integration checks
+| Start here                                          | Then inspect                                                                                                                                 |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Architecture](docs/architecture.md)                | [Storage boundary](crates/walnut-core/src/storage.rs), [engine](crates/walnut-core/src/engine.rs), [B+ tree](crates/walnut-core/src/tree.rs) |
+| [Tree and recovery contract](docs/tree-contract.md) | [WAL](crates/walnut-core/src/wal.rs), [recovery tests](crates/walnut-core/tests/tree_recovery.rs)                                            |
+| [File and event formats](docs/file-format.md)       | [Page codec](crates/walnut-core/src/page.rs), [CLI and local bridge](crates/walnut-cli/src/main.rs)                                          |
+| [Portable replay](docs/replay.md)                   | [Story capture](crates/walnut-cli/src/story.rs), [viewer](src/ReplayApp.tsx), [browser checks](replay/replay.spec.ts)                        |
+| [Gameplan](GAMEPLAN.md)                             | [Roadmap and Astra reasoning levels](ROADMAP.md), [release preparation](docs/release.md)                                                     |
 
-Next: Phase 6's portfolio presentation, portable recorded demo, platform checks, and follow-up usability walkthrough. The goal remains: **make WALnut technologically and visually impressive.**
+MIT licensed. A local learning and portfolio project with explicit limits, real files, and inspectable failure behavior.

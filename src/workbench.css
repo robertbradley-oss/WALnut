@@ -1381,8 +1381,11 @@ select:focus-visible {
     border-left: 0;
     border-top: 1px solid var(--line);
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 0 30px;
+  }
+  .inspect-panel > * {
+    min-width: 0;
   }
   .inspect-heading,
   .inspect-picker,

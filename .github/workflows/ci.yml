@@ -26,6 +26,12 @@ jobs:
       - run: npm run check
       - run: npm run test:core
       - run: npm run test:e2e
+      - run: npm run test:replay
+      - run: npm run release:prepare
+      - uses: actions/upload-artifact@v4
+        with:
+          name: walnut-release-candidate-${{ matrix.os }}
+          path: release/
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -33,3 +39,5 @@ jobs:
           path: |
             playwright-report/
             test-results/
+            work/replay-report/
+            work/replay-tests/

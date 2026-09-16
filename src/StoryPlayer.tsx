@@ -43,6 +43,7 @@ export function StoryGuide({
   busy,
   connected,
   error,
+  recorded = false,
 }: {
   story: RecordedStory | null;
   frame?: StoryFrame;
@@ -53,6 +54,7 @@ export function StoryGuide({
   busy: boolean;
   connected: boolean;
   error: string;
+  recorded?: boolean;
 }) {
   const choice = scenarios.find((item) => item.id === scenario)!;
   return (
@@ -60,7 +62,9 @@ export function StoryGuide({
       <span className="eyebrow">THREE WAYS INSIDE</span>
       <h2 id="story-heading">Follow the bytes.</h2>
       <p className="story-intro">
-        Run a real experiment. Explore every captured step at your own pace.
+        {recorded
+          ? "Choose a recorded experiment. Inspect each completed operation."
+          : "Run a real experiment. Explore every captured step at your own pace."}
       </p>
       {frame && story && (
         <section
@@ -112,15 +116,25 @@ export function StoryGuide({
         ))}
       </div>
       <p className="story-lesson">{choice.lesson}</p>
-      <button className="story-run" disabled={busy || !connected} onClick={run}>
-        {busy
-          ? "Capturing engine run…"
-          : story?.scenario === scenario
-            ? "Run story again"
-            : "Run story"}
-        <span aria-hidden="true">↗</span>
-      </button>
-      <p className="story-scope">Each run uses a fresh disposable database.</p>
+      {!recorded && (
+        <button
+          className="story-run"
+          disabled={busy || !connected}
+          onClick={run}
+        >
+          {busy
+            ? "Capturing engine run…"
+            : story?.scenario === scenario
+              ? "Run story again"
+              : "Run story"}
+          <span aria-hidden="true">↗</span>
+        </button>
+      )}
+      <p className="story-scope">
+        {recorded
+          ? "Use the timeline to step through this recording."
+          : "Each run uses a fresh disposable database."}
+      </p>
       {error && (
         <p className="work-error" role="alert">
           {error}
