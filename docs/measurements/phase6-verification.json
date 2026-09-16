@@ -1,0 +1,44 @@
+{
+  "recorded_at": "2026-09-16T00:11:55.018Z",
+  "source_revision": "d7666bc19394198f583a55d88ead5f341c4a7999",
+  "initial_revision": "6060fb1b498462bd1f2da6da3c9f32769b2721d6",
+  "scope": "Clean source checkouts with fresh dependency installs and targets. Windows reused external installed GNULLVM and Chromium; Ubuntu installed the pinned toolchains and browser in an isolated WSL2 distribution.",
+  "platforms": {
+    "windows": {
+      "system": "Windows 11 Home 26200; x86_64-pc-windows-gnullvm; NTFS",
+      "node": "24.19.0",
+      "rust": "1.98.1",
+      "playwright": "1.63.0",
+      "chromium": "153.0.8010.12",
+      "npm_ci": "passed",
+      "checks": "passed",
+      "rust_tests": 61,
+      "live_browser_tests": 23,
+      "replay_browser_tests": 6,
+      "packaging": "passed",
+      "logs": "phase6-windows.log.gz",
+      "logs_sha256": "93d8bafd4ae9c2ef587671fc33a3689be7034dcd31e419091a78a684d6382669"
+    },
+    "linux": {
+      "system": "Ubuntu 24.04.5 LTS under WSL2 6.18.33.2; x86_64-unknown-linux-gnu; ext4",
+      "node": "24.19.0",
+      "rust": "1.98.1",
+      "playwright": "1.63.0",
+      "chromium": "153.0.8010.12",
+      "npm_ci": "passed",
+      "checks": "passed",
+      "rust_tests": 61,
+      "live_browser_tests": 23,
+      "replay_browser_tests": 6,
+      "packaging": "passed",
+      "logs": "phase6-linux.log.gz",
+      "logs_sha256": "c311b54c25719375dddb8f2f004de6b6c0c8bf007d64d51673afb78e8535b018"
+    }
+  },
+  "notes": [
+    "The first Linux browser run passed 22 of 23 tests. The keyboard test pressed Enter before the initial snapshot completed; no write was dispatched. It now waits for the commit button to be enabled. All 23 passed on rerun.",
+    "The changed keyboard test was also rerun on Windows. The other implementation files are identical between these two revisions.",
+    "The 30-second video is actual Chromium replay interaction. Physical power-loss survival and hosted CI are not claimed.",
+    "Observed visitor comprehension remains pending."
+  ]
+}

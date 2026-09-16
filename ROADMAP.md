@@ -1,6 +1,6 @@
 # WALnut — Build Roadmap
 
-The lasting direction is in [GAMEPLAN.md](GAMEPLAN.md). This roadmap describes the sequence and observable results. Stages 1–5 are implemented locally; see [foundation verification](docs/stage-1.md), [recovery verification](docs/stage-2.md), [B+ tree verification](docs/stage-3.md), [workbench verification](docs/stage-4.md), and [verification/performance results](docs/stage-5.md). Stage 4 incorporated owner walkthrough feedback; a successful follow-up visitor walkthrough remains open. Stage 6 is the next planned implementation stage. Milestones represent working increments, not calendar promises.
+The lasting direction is in [GAMEPLAN.md](GAMEPLAN.md). This roadmap describes the sequence and observable results. Stages 1–6 are implemented locally; see [foundation verification](docs/stage-1.md), [recovery verification](docs/stage-2.md), [B+ tree verification](docs/stage-3.md), [workbench verification](docs/stage-4.md), [verification/performance results](docs/stage-5.md), and [portfolio/platform verification](docs/stage-6.md). Fresh Windows and Ubuntu checkouts pass the engine, live browser, and portable replay checks. Stage 4 incorporated owner walkthrough feedback; the final follow-up visitor walkthrough remains open. Versioned release files are prepared locally; publishing remains a separate user-directed action. Milestones represent working increments, not calendar promises.
 
 ## Astra reasoning levels
 
