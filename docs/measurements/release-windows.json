@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "recorded_at": "2026-09-16T02:56:15.476Z",
+  "source_revision": "ed13ef3da44c6a9ed0c224ac3b36a30d002bae64",
+  "environment": "Windows 11 Home build 26200; NTFS; Rust 1.98.1 x86_64-pc-windows-gnullvm; Node 24.19.0; Playwright 1.63.0",
+  "scope": "Fresh local Git clone, dependency install, and build target. Reused externally installed Rust compiler and Chromium; not a clean-machine MSVC test.",
+  "counts": {
+    "rust": 61,
+    "live_browser_api": 24,
+    "portable_replay": 7
+  },
+  "results": [
+    {
+      "command": "npm ci",
+      "exit": 0,
+      "elapsed_ms": 1918
+    },
+    {
+      "command": "npm run check",
+      "exit": 0,
+      "elapsed_ms": 34611
+    },
+    {
+      "command": "npm run test:core",
+      "exit": 0,
+      "elapsed_ms": 48480
+    },
+    {
+      "command": "npm run test:e2e",
+      "exit": 0,
+      "elapsed_ms": 34924
+    },
+    {
+      "command": "npm run test:replay",
+      "exit": 0,
+      "elapsed_ms": 36894
+    },
+    {
+      "command": "npm run release:prepare",
+      "exit": 0,
+      "elapsed_ms": 793
+    }
+  ],
+  "log": "release-windows.log.gz",
+  "log_sha256": "7859b61b762e9630323282f60316aaa8a6f47ff953701ec73f5cf759e1ff761f"
+}

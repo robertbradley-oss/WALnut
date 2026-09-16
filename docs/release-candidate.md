@@ -31,16 +31,25 @@ Tests and media captures use disposable databases. The everyday live database is
 not part of the release. Logo/layout review covered 1440 px desktop and 375 px
 mobile; replay tests additionally cover offline use and a nested static URL.
 
-Fresh-clone verification and clean-source packaging are the remaining local
-release checks. Hosted Windows/Linux CI and publication have not run for this
-candidate yet. Earlier clean Windows/Linux evidence remains in [Phase 6](stage-6.md);
-it is not presented as a fresh check of this interface revision.
+The same checks passed from a fresh clone of `ed13ef3`, with a new dependency
+installation and build target. Clean-source release packaging also passed.
+The clone reused the installed GNULLVM compiler and Chromium; this is not a
+clean-machine MSVC check. [Machine-readable results](measurements/release-windows.json)
+and [compressed command logs](measurements/release-windows.log.gz) retain the evidence.
+The release evidence added afterward changes documentation only.
+
+This table reports local Windows results. Hosted Windows/Linux results are
+available in the [verification workflow runs](https://github.com/robertbradley-oss/WALnut/actions/workflows/ci.yml).
+Earlier clean Windows/Linux evidence remains in [Phase 6](stage-6.md); it is not
+presented as a fresh check of this interface revision.
 
 ## Visitor walkthrough
 
-The owner supplied feedback that prompted the interface redesign. A new observed
-walkthrough of the final interface remains open. Automated tests verify state and
-interaction behavior; they cannot establish whether a visitor understands it.
+The owner supplied feedback that prompted the interface redesign. The follow-up
+owner walkthrough still found the interface difficult to interpret; the owner
+accepted proceeding with the current technical presentation. Comprehension by a
+new technical reader remains unproven. Automated tests verify state and interaction
+behavior; they cannot establish whether a visitor understands it.
 
 Use the browser demo or local preview and give a reader these tasks:
 

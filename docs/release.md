@@ -45,7 +45,7 @@ The two-minute visitor walkthrough remains an observed finish-line check: use th
 The intended repository is `robertbradley-oss/WALnut`. Its CI uploads the Linux
 `dist-demo/` artifact and deploys it to GitHub Pages only after both platform jobs
 pass, on `main` pushes or a manual run. Pull requests and forks do not deploy.
-Enable GitHub Actions as the repository's Pages source before the first run.
+Enable GitHub Actions as the repository's Pages source before the first deployment.
 The workflow follows [GitHub's custom Pages workflow guidance](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
 
 The hosted artifact is the recorded viewer; it has no live engine or write API.
