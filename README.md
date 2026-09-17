@@ -9,13 +9,13 @@
 
 Follow two writes through a B+ tree split, a committed write-ahead log, and recovery after process termination. WALnut is a Rust key/value database with a live inspector and a portable replay of real engine runs. Every page, log entry, and hex byte comes from the engine.
 
-[![A committed page split: the operation bar names the generation change and the new root, the B+ tree shows one leaf becoming two, and the durability rail shows the log holding one transaction the main file does not have](docs/media/walnut-demo.png)](https://robertbradley-oss.github.io/WALnut/walnut-demo.webm)
+[![A committed page split: the operation bar names the generation change and the new root, the B+ tree shows one leaf becoming two, and the durability rail shows the log holding one transaction the main file does not have](docs/media/walnut-demo.png?v=fa468f5)](https://robertbradley-oss.github.io/WALnut/walnut-demo.webm?v=fa468f5)
 
-**[Explore the browser demo](https://robertbradley-oss.github.io/WALnut/)** · [Watch the 30-second recording](https://robertbradley-oss.github.io/WALnut/walnut-demo.webm) · [Engineering case study](docs/case-study.md) · [Measured performance](docs/performance.md)
+**[Explore the browser demo](https://robertbradley-oss.github.io/WALnut/?v=fa468f5)** · [Watch the 30-second recording](https://robertbradley-oss.github.io/WALnut/walnut-demo.webm?v=fa468f5) · [Engineering case study](docs/case-study.md) · [Measured performance](docs/performance.md)
 
 Every screen answers four questions: what operation you are looking at, what it changed, what is durable right now, and what you can inspect next.
 
-![The live workbench after a point lookup: the page map, tree, search path, record list and byte layout all highlight the same key](docs/media/walnut-live.png)
+![The live workbench after a point lookup: the page map, tree, search path, record list and byte layout all highlight the same key](docs/media/walnut-live.png?v=fa468f5)
 
 ### Reading it
 
@@ -33,7 +33,9 @@ Selecting anything lights the same thing everywhere: the page map, the tree, the
 
 ## Try it
 
-**Just explore:** [open the browser demo](https://robertbradley-oss.github.io/WALnut/), or download `walnut-0.1.0-demo.html` from the [v0.1.0 release](https://github.com/robertbradley-oss/WALnut/releases/tag/v0.1.0) and open it offline. Both contain the same three kinds of real engine recordings, fonts, and controls. The demo is recorded exploration; running the engine locally lets you write your own data. [Build the portable demo yourself](docs/replay.md).
+**Just explore:** [open the current browser demo](https://robertbradley-oss.github.io/WALnut/?v=fa468f5). It includes the updated interface and three real engine recordings. The demo is recorded exploration; running the engine locally lets you write your own data.
+
+**Explore offline:** [build the portable demo from the current source](docs/replay.md). The downloadable `walnut-0.1.0-demo.html` in the [v0.1.0 release](https://github.com/robertbradley-oss/WALnut/releases/tag/v0.1.0) is the original release snapshot and predates the latest UI changes.
 
 **Run the engine:** install **Node 24.19.0** and **Rust 1.98.1**, plus a native linker (MSVC Build Tools on Windows; a C toolchain on Linux).
 
