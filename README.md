@@ -17,6 +17,20 @@ Every screen answers four questions: what operation you are looking at, what it 
 
 ![The live workbench after a point lookup: the page map, tree, search path, record list and byte layout all highlight the same key](docs/media/walnut-live.png)
 
+### Reading it
+
+Surfaces are neutral. Colour is the whole state vocabulary, and it follows the data from hot to at rest:
+
+| Colour    | Where the data is                                      |
+| --------- | ------------------------------------------------------ |
+| **Amber** | Staged in memory. Not durable, invisible to reads.     |
+| **Green** | Committed. Synced and verified in the write-ahead log. |
+| **Blue**  | Checkpointed. At rest in the main database file.       |
+| **Cyan**  | The page, record or route you are inspecting.          |
+| **Red**   | A stopped process, a rejected command, a broken file.  |
+
+Selecting anything lights the same thing everywhere: the page map, the tree, the search route, the record list and the byte span in the page picture. A commit that changes a few pages is drawn loudly; one that rewrites most of the tree keeps a quiet edge marker instead, so the highlight always means something you can follow.
+
 ## Try it
 
 **Just explore:** [open the browser demo](https://robertbradley-oss.github.io/WALnut/), or download `walnut-0.1.0-demo.html` from the [v0.1.0 release](https://github.com/robertbradley-oss/WALnut/releases/tag/v0.1.0) and open it offline. Both contain the same three kinds of real engine recordings, fonts, and controls. The demo is recorded exploration; running the engine locally lets you write your own data. [Build the portable demo yourself](docs/replay.md).
@@ -56,7 +70,7 @@ Use the timeline to step, play, pause, change speed, or reset. Select a tree pag
 - **A B+ tree built here:** 4 KB pages, exact separators, linked leaves, byte-based splits, cascading root changes, point lookups, and ordered scans.
 - **Atomic recovery:** complete changed-page images and root/allocation metadata in a checksummed redo log; sync and read-back before commit acknowledgment.
 - **Failures you can reproduce:** short writes, failed syncs, interrupted checkpoint/reset, corrupt input, real process termination, and generated workloads checked against an independent ordered map.
-- **An inspectable engine:** verified page bytes, actual search paths, write/log/checkpoint state, captured process receipts, and tracing you can turn off.
+- **An inspectable engine:** verified page bytes, actual search paths, write/log/checkpoint state, captured process receipts, and tracing you can turn off. A page map carries every allocated page — all 1,024 at the limit — in one tab stop.
 - **Portable evidence:** one HTML replay with three real recordings, source revision, build hash, and retained license notices.
 
 The subtle case: a successful checkpoint can leave an obsolete, valid WAL prefix after a failed reset. Recovery must make the _next_ commit safe too. [Read the worked example and regression test](docs/case-study.md).

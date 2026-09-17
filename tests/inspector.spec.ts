@@ -327,7 +327,7 @@ test("writes real bytes, reads a value, and preserves it across file reopen", as
   expect(after.session_id).not.toBe(before.session_id);
   expect(after.generation).toBe(1);
   expect(after.records).toEqual(before.records);
-  await page.getByRole("button", { name: "GET Read" }).click();
+  await page.getByRole("button", { name: "GET", exact: true }).click();
   await page.getByRole("button", { name: "Find this key" }).click();
   await expect(page.getByLabel("Read value")).toHaveText("from the inside 🌰");
   expect(errors).toEqual([]);
@@ -491,7 +491,7 @@ test("updates keep one record and missing lookups are explicit", async ({
   await expect(
     page.getByLabel("Changes since previous operation"),
   ).toContainText("Gen 1 → 2");
-  await page.getByRole("button", { name: "GET Read" }).click();
+  await page.getByRole("button", { name: "GET", exact: true }).click();
   await page.getByRole("textbox", { name: "Key", exact: true }).fill("missing");
   await page.getByRole("button", { name: "Find this key" }).click();
   await expect(page.getByText("“missing” is not in this tree.")).toBeVisible();
@@ -666,7 +666,7 @@ test("stages two puts, hides them from reads, commits atomically, and checkpoint
   await expect(
     page.getByRole("button", { name: "Commit this put" }),
   ).toBeDisabled();
-  await page.getByRole("button", { name: "GET Read" }).click();
+  await page.getByRole("button", { name: "GET", exact: true }).click();
   await page.getByRole("button", { name: "Find this key" }).click();
   await expect(page.getByText("“beta” is not in this tree.")).toBeVisible();
   await page.getByRole("button", { name: "Commit batch", exact: true }).click();
@@ -862,7 +862,7 @@ test("grows a three-level tree, follows a lookup, inspects routing and scans lin
     ).json()
   ).range;
   const target = all.records[90];
-  await page.getByRole("button", { name: "GET Read" }).click();
+  await page.getByRole("button", { name: "GET", exact: true }).click();
   await page
     .getByRole("textbox", { name: "Key", exact: true })
     .fill(target.key);
@@ -890,7 +890,7 @@ test("grows a three-level tree, follows a lookup, inspects routing and scans lin
       name: `Page ${target.page_id}: ${selected.used_bytes} of 4096 bytes used`,
     }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "SCAN Range" }).click();
+  await page.getByRole("button", { name: "SCAN", exact: true }).click();
   await page.getByLabel("Result limit").fill("17");
   await page.getByRole("button", { name: "Scan this range" }).click();
   const results = page.getByRole("region", { name: "Range results" });
@@ -1337,10 +1337,10 @@ test("command panel distinguishes empty values, validates range bounds, and clea
   await page.getByRole("textbox", { name: "Value", exact: true }).fill("");
   await page.getByRole("button", { name: "Commit this put" }).click();
   await expect(page.getByTestId("generation")).toHaveText("01");
-  await page.getByRole("button", { name: "GET Read" }).click();
+  await page.getByRole("button", { name: "GET", exact: true }).click();
   await page.getByRole("button", { name: "Find this key" }).click();
   await expect(page.getByLabel("Read value")).toHaveText("(empty string)");
-  await page.getByRole("button", { name: "SCAN Range" }).click();
+  await page.getByRole("button", { name: "SCAN", exact: true }).click();
   await page.getByLabel("Start key").fill("z");
   await page.getByLabel("End key").fill("a");
   await expect(

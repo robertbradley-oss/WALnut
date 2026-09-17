@@ -286,6 +286,10 @@ export function Structure({
   const split = new Set(
     snapshot.splits.flatMap((item) => [item.left, item.right]),
   );
+  // A commit that rewrites most of the tree is true but not followable. Keep
+  // the loud treatment for changes small enough to trace, and let a bulk
+  // insert read as a quiet edge instead of colouring every card at once.
+  const loudChange = changed.size > 0 && changed.size <= 6;
   const onPathEdge = (from: number, to: number) =>
     path.some((id, index) => id === from && path[index + 1] === to);
 
@@ -378,6 +382,7 @@ export function Structure({
         data-selected={isSelected || undefined}
         data-route={route || undefined}
         data-write={didSplit ? "split" : didChange ? "changed" : undefined}
+        data-quiet={!loudChange || undefined}
         data-log={linked.has(page.id) ? linkedFrame?.generation : undefined}
         data-recent={
           (pulseAllowed &&
@@ -398,14 +403,12 @@ export function Structure({
           <b className="num">{pageName(page.id)}</b>
         </span>
         <span className="canvas-page-body">
-          <span className="canvas-page-count">
-            <strong className="num">{page.count}</strong>
-            <small>{plural(page.count, unit)}</small>
+          <span className="canvas-page-count num">
+            <strong>{page.count}</strong> {plural(page.count, unit)}
           </span>
           {page.first_key !== null && (
             <span className="canvas-page-key" title={page.first_key}>
-              <i aria-hidden="true">{page.kind === "leaf" ? "from" : "sep"}</i>
-              {shortKey(page.first_key, Math.max(12, Math.floor(cardW / 6.4)))}
+              {shortKey(page.first_key, Math.max(12, Math.floor(cardW / 6.2)))}
             </span>
           )}
         </span>
@@ -419,14 +422,15 @@ export function Structure({
           </span>
           <span className="canvas-page-bytes num">
             {page.used_bytes.toLocaleString()} B
-            {/* The search path already reads as a cyan edge and border; only
-                the write state needs a word of its own here. */}
-            {didSplit ? (
+            {/* The bar already reads as a percentage, and the search path reads
+                as a cyan edge. Only a change small enough to follow is worth a
+                word of its own; a bulk insert touches every page and a badge on
+                every card would say nothing. */}
+            {loudChange && didSplit ? (
               <b data-flag="split">SPLIT</b>
-            ) : didChange ? (
+            ) : loudChange && didChange ? (
               <b data-flag="write">WRITE</b>
             ) : null}
-            <em>{Math.round(fill * 100)}%</em>
           </span>
         </span>
       </button>
@@ -436,20 +440,9 @@ export function Structure({
   return (
     <section className="structure" aria-labelledby={titleId} data-mode={mode}>
       <header className="structure-head">
-        <div className="structure-title">
-          <span className="kicker">Structure</span>
-          <h2 id={titleId}>
-            B+ tree <i aria-hidden="true">·</i>{" "}
-            <b className="num" data-testid="canvas-page-count">
-              {snapshot.page_count}
-            </b>{" "}
-            {plural(snapshot.page_count, "page")} <i aria-hidden="true">·</i>{" "}
-            <b className="num" data-testid="canvas-tree-height">
-              {snapshot.tree_height}
-            </b>{" "}
-            {snapshot.tree_height === 1 ? "level" : "levels"}
-          </h2>
-        </div>
+        <h2 className="structure-title" id={titleId}>
+          B+ tree
+        </h2>
         <nav className="structure-crumbs" aria-label="Tree ancestry">
           {[...lineage, ...(focus ? [focus] : [])].map((page, index) => (
             <span key={page.id}>
@@ -524,6 +517,7 @@ export function Structure({
         onSelect={select}
         disabled={disabled}
         linked={linked}
+        quietChange={!loudChange}
       />
 
       <div
@@ -638,26 +632,15 @@ export function Structure({
                 }
                 aria-hidden="true"
               >
-                {row.level === snapshot.tree_height - 1
-                  ? "ROOT"
-                  : row.level === 0
-                    ? "LEAVES"
-                    : `LEVEL ${row.level}`}
-                <em>
-                  {(levels.get(row.level) ?? []).length}{" "}
-                  {plural((levels.get(row.level) ?? []).length, "page")}
-                </em>
+                {`${
+                  row.level === snapshot.tree_height - 1
+                    ? "ROOT"
+                    : row.level === 0
+                      ? "LEAVES"
+                      : `LEVEL ${row.level}`
+                } · ${(levels.get(row.level) ?? []).length}`}
               </span>
             ))}
-            {rows.length > 1 && (
-              <span
-                className="structure-edge-tag"
-                style={{ top: PAD + CARD_H + ROW_GAP / 2 - 8 } as CSSProperties}
-                aria-hidden="true"
-              >
-                child pointers
-              </span>
-            )}
             {snapshot.tree_height === 1 && (
               <p
                 className="structure-note"
@@ -676,8 +659,8 @@ export function Structure({
         </div>
       </div>
 
-      <div className="structure-route">
-        <span className="kicker">Search path</span>
+      <div className="structure-route" hidden={path.length === 0}>
+        <span className="kicker">{routeLabel(snapshot)}</span>
         <div data-testid="search-path" title={path.map(pageName).join(" → ")}>
           {path.length ? (
             trail.map((id, index) => (
@@ -706,21 +689,15 @@ export function Structure({
             <small>A lookup or scan reveals its route.</small>
           )}
         </div>
-        {path.length > 0 && (
-          <small className="structure-route-kind">
-            {routeLabel(snapshot)}
-            {path.length > 7 && ` · ${path.length} pages`}
-          </small>
+        {path.length > 7 && (
+          <small className="structure-route-kind">{path.length} pages</small>
         )}
       </div>
 
-      <p id={legendId} className="structure-legend">
-        <span data-legend="route">Search path</span>
-        <span data-legend="write">Changed by the last commit</span>
-        <span data-legend="selected">Inspecting</span>
-        <span className="structure-legend-note">
-          Each node is one real {snapshot.page_size / 1024} KB page.
-        </span>
+      <p id={legendId} className="sr-only">
+        Each node is one real {snapshot.page_size / 1024} KB page. A cyan border
+        marks the latest search path, a green edge marks a page changed by the
+        last commit, and a filled cyan edge marks the page being inspected.
       </p>
     </section>
   );
@@ -738,6 +715,7 @@ function PageMap({
   onSelect,
   disabled,
   linked,
+  quietChange,
 }: {
   snapshot: Snapshot;
   levels: Map<number, TreePage[]>;
@@ -745,6 +723,7 @@ function PageMap({
   onSelect: (id: number) => void;
   disabled: boolean;
   linked: Set<number>;
+  quietChange: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   // Selecting a live page disables the map while the engine answers, which
@@ -808,10 +787,12 @@ function PageMap({
       ref={containerRef}
       role="group"
       aria-label="Page map"
+      title="Every allocated page, by level. Arrow keys walk them all."
       onKeyDown={move}
     >
       <span className="kicker">
-        Page map<em className="num">{snapshot.page_count}</em>
+        <em className="num">{snapshot.page_count}</em>
+        pages
       </span>
       <div className="page-map-levels">
         {ordered.map((level) => {
@@ -821,7 +802,10 @@ function PageMap({
               <span className="page-map-tag num" aria-hidden="true">
                 L{level}
               </span>
-              <div className="page-map-cells">
+              <div
+                className="page-map-cells"
+                data-quiet={quietChange || undefined}
+              >
                 {row.map((page) => (
                   <MapCell
                     key={page.id}
@@ -842,7 +826,6 @@ function PageMap({
           );
         })}
       </div>
-      <span className="page-map-hint">arrow keys walk every page</span>
     </div>
   );
 }

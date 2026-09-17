@@ -47,11 +47,18 @@ presented as a fresh check of this interface revision.
 
 ## Visitor walkthrough
 
-The owner supplied feedback that prompted the interface redesign. The follow-up
-owner walkthrough still found the interface difficult to interpret; the owner
-accepted proceeding with the current technical presentation. Comprehension by a
-new technical reader remains unproven. Automated tests verify state and interaction
-behavior; they cannot establish whether a visitor understands it.
+Three owner walkthroughs have shaped this interface. The first found it
+uninterpretable and prompted the redesign. The second still found it difficult
+to read. The third reported that the workspace had "a lot going on" while
+clicking through the database, which produced the measured
+[density pass](stage-7.md#density-pass): the tree dropped from 86 visible text
+elements to 55, the command console from 25 to 14, and a commit that rewrites
+most of the tree now reads quietly so the state colours stay informative. No
+capability was removed.
+
+Comprehension by a new technical reader remains unproven. Automated tests verify
+state and interaction behavior; they cannot establish whether a visitor
+understands it.
 
 Use the browser demo or local preview and give a reader these tasks:
 

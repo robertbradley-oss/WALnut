@@ -28,9 +28,8 @@ function PageLayout({
     <div className="page-map">
       <div className="page-map-head">
         <span className="num">
-          {pageName(snapshot.page_id)} · {snapshot.page_kind.toUpperCase()}
+          {snapshot.page_size.toLocaleString()} BYTES ON DISK
         </span>
-        <span className="num">{snapshot.page_size.toLocaleString()} BYTES</span>
       </div>
       <svg
         viewBox={`0 0 ${width + 4} ${height + 12}`}
@@ -98,15 +97,11 @@ function PageLayout({
         />
       </svg>
       <div className="page-map-foot">
-        <strong className="num">
-          {snapshot.used_bytes.toLocaleString()} B used
+        <strong className="num" data-tight={fill > 0.82 || undefined}>
+          {snapshot.used_bytes.toLocaleString()} of{" "}
+          {snapshot.page_size.toLocaleString()} B used ·{" "}
+          {Math.round(fill * 100)}%
         </strong>
-        <span className="num" data-tight={fill > 0.82 || undefined}>
-          {Math.round(fill * 100)}% full
-        </span>
-        <span className="num">
-          {(snapshot.page_size - snapshot.used_bytes).toLocaleString()} B free
-        </span>
       </div>
       <div className="page-map-legend">
         <span data-span="header">Header</span>
@@ -386,23 +381,19 @@ export function Inspector({
   return (
     <aside className="inspector" aria-labelledby="inspect-title">
       <header className="inspect-head">
-        <div>
-          <span className="kicker">Page inspector</span>
-          <h2 id="inspect-title" className="num">
-            {pageName(snapshot.page_id)}
-            <span>
-              {snapshot.page_kind}
-              {isRoot && snapshot.page_id !== 0 ? " · root" : ""}
-            </span>
-          </h2>
-        </div>
+        <h2 id="inspect-title" className="num">
+          {pageName(snapshot.page_id)}
+          <span>
+            {snapshot.page_kind}
+            {isRoot && snapshot.page_id !== 0 ? " · root" : ""}
+          </span>
+        </h2>
         <span className="inspect-origin" data-mode={mode}>
           {mode === "replay" ? "CAPTURED" : "LIVE"}
         </span>
       </header>
 
       <label className="inspect-picker">
-        <span className="kicker">Page explorer</span>
         <select
           aria-label="PAGE EXPLORER"
           value={snapshot.page_id}
@@ -423,31 +414,26 @@ export function Inspector({
         className="inspect-lineage"
         aria-label="Page and log relationship"
       >
-        <span className="kicker">Page images in retained WAL</span>
         {containingFrames.length ? (
-          <>
-            <div className="inspect-log-links">
-              {containingFrames.map((frame) => (
-                <button
-                  key={frame.generation}
-                  disabled={disabled}
-                  aria-pressed={selectedFrame?.generation === frame.generation}
-                  onClick={() => onSelectFrame(frame)}
-                >
-                  WAL gen {frame.generation}
-                </button>
-              ))}
-            </div>
-            <p>
-              Log entries contain images of this page. The inspector shows its
-              current {mode === "replay" ? "captured" : "committed"} bytes.
-            </p>
-          </>
+          <div className="inspect-log-links">
+            <span className="kicker">In the log</span>
+            {containingFrames.map((frame) => (
+              <button
+                key={frame.generation}
+                disabled={disabled}
+                aria-pressed={selectedFrame?.generation === frame.generation}
+                title={`Log generation ${frame.generation} contains an image of this page. The inspector shows its current ${mode === "replay" ? "captured" : "committed"} bytes.`}
+                onClick={() => onSelectFrame(frame)}
+              >
+                WAL gen {frame.generation}
+              </button>
+            ))}
+          </div>
         ) : (
-          <p>
-            No image of this page in the retained log. Page generation{" "}
-            {snapshot.page_generation}; main-file generation{" "}
-            {snapshot.checkpoint_generation ?? "unavailable"}.
+          <p
+            title={`Page generation ${snapshot.page_generation}; main-file generation ${snapshot.checkpoint_generation ?? "unavailable"}.`}
+          >
+            Not in the retained log
           </p>
         )}
       </section>
@@ -460,7 +446,7 @@ export function Inspector({
 
       <dl className="inspect-facts">
         <div>
-          <dt>Page generation</dt>
+          <dt>Gen</dt>
           <dd className="num">{snapshot.page_generation}</dd>
         </div>
         <div>
@@ -490,10 +476,7 @@ export function Inspector({
 
       {snapshot.page_kind === "leaf" ? (
         <section className="inspect-block" aria-label="Page records">
-          <h3 className="kicker">
-            {snapshot.records.length} records
-            <em>key / value</em>
-          </h3>
+          <h3 className="kicker">{snapshot.records.length} records</h3>
           {snapshot.records.length ? (
             <div className="inspect-records">
               {snapshot.records.map((record) => (
@@ -541,8 +524,7 @@ export function Inspector({
 
       <details className="inspect-hex" ref={hexRef}>
         <summary>
-          Raw bytes
-          <span className="num">{snapshot.page_size / 1024} KB · hex</span>
+          Raw bytes <span className="num">hex</span>
         </summary>
         <ByteView
           snapshot={snapshot}

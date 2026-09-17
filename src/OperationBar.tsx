@@ -28,6 +28,8 @@ export function withChanges(
   const signed = (value: number) => `${value >= 0 ? "+" : ""}${value}`;
   return {
     ...operation,
+    // The delta line now carries the generation, so drop the fact that repeats it.
+    facts: operation.facts.filter((fact) => fact.label !== "Generation"),
     changes: [
       {
         label: "Records",

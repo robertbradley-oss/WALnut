@@ -20,21 +20,13 @@
   flex-wrap: wrap;
 }
 
-.structure-title h2 {
-  font-size: 15px;
-  font-weight: 650;
-  margin-top: 2px;
-  color: var(--ink);
-}
-
-.structure-title h2 b {
-  color: var(--ink);
-  font-weight: 650;
-}
-
-.structure-title h2 i {
-  color: var(--ink-ghost);
-  font-style: normal;
+.structure-title {
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
 }
 
 .structure-crumbs {
@@ -140,13 +132,17 @@
   white-space: nowrap;
 }
 
+.page-map-strip > .kicker {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+}
+
 .page-map-strip > .kicker em {
-  display: block;
   font-style: normal;
   font-size: 15px;
   color: var(--ink);
   letter-spacing: -0.01em;
-  margin-top: 1px;
 }
 
 .page-map-levels {
@@ -216,6 +212,10 @@
   background: var(--committed);
 }
 
+.page-map-cells[data-quiet] .page-map-cell[data-write] i {
+  background: var(--ink-faint);
+}
+
 .page-map-cell[data-selected] i {
   background: var(--selected);
   box-shadow: 0 0 0 1px var(--selected-line);
@@ -223,15 +223,6 @@
 
 .page-map-cell:focus-visible {
   outline-offset: 1px;
-}
-
-.page-map-hint {
-  align-self: center;
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.06em;
-  color: var(--ink-ghost);
-  white-space: nowrap;
 }
 
 @media (max-width: 600px) {
@@ -341,27 +332,6 @@
   color: var(--ink-ghost);
 }
 
-.structure-level-tag em {
-  font-style: normal;
-  letter-spacing: 0.04em;
-  color: var(--ink-ghost);
-  opacity: 1;
-}
-
-.structure-edge-tag {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 1px 8px;
-  border-radius: 99px;
-  background: var(--bg-panel);
-  font-family: var(--mono);
-  font-size: 9px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--ink-ghost);
-}
-
 .structure-note {
   position: absolute;
   left: 0;
@@ -468,6 +438,21 @@
   background: var(--committed);
 }
 
+/* A commit that rewrote most of the tree is still true, but colouring every
+   card at once says nothing. Keep the state on the left edge only. */
+.canvas-page[data-write][data-quiet]:not([data-selected]) {
+  background: linear-gradient(var(--bg-raised), #10141b);
+  border-color: var(--line-strong);
+}
+
+.canvas-page[data-write][data-quiet] .canvas-page-bar i {
+  background: var(--ink-ghost);
+}
+
+.canvas-page[data-write][data-quiet]::before {
+  background: var(--committed-line);
+}
+
 .canvas-page[data-selected] {
   border-color: var(--selected);
   background: linear-gradient(var(--selected-soft), #10141b 74%);
@@ -524,23 +509,18 @@
 }
 
 .canvas-page-count {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
   flex: none;
+  font-size: 10px;
+  color: var(--ink-faint);
+  white-space: nowrap;
 }
 
 .canvas-page-count strong {
-  font-size: 23px;
+  font-size: 22px;
   font-weight: 600;
   letter-spacing: -0.03em;
   color: var(--ink);
-  line-height: 1;
-}
-
-.canvas-page-count small {
-  font-size: 10px;
-  color: var(--ink-faint);
+  margin-right: 2px;
 }
 
 .canvas-page-key {
@@ -553,15 +533,6 @@
   overflow: hidden;
   white-space: nowrap;
   min-width: 0;
-}
-
-.canvas-page-key i {
-  flex: none;
-  font-style: normal;
-  font-size: 8px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--ink-ghost);
 }
 
 .canvas-page-fill {
@@ -610,15 +581,9 @@
   min-width: 0;
 }
 
-.canvas-page-bytes em {
-  margin-left: auto;
-  flex: none;
-  font-style: normal;
-  color: var(--ink-ghost);
-}
-
 .canvas-page-bytes b {
   flex: none;
+  margin-left: auto;
   font-family: var(--mono);
   font-size: 8px;
   font-weight: 600;
@@ -634,6 +599,10 @@
 }
 
 /* ── route strip + legend ───────────────────────────────────────────── */
+
+.structure-route[hidden] {
+  display: none;
+}
 
 .structure-route {
   display: flex;
@@ -692,50 +661,6 @@
   margin-left: auto;
   color: var(--ink-faint) !important;
   letter-spacing: 0.04em;
-}
-
-.structure-legend {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 16px;
-  border-top: 1px solid var(--line);
-  font-family: var(--mono);
-  font-size: 10px;
-  color: var(--ink-faint);
-  flex-wrap: wrap;
-}
-
-.structure-legend span[data-legend] {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.structure-legend span[data-legend]::before {
-  content: "";
-  width: 9px;
-  height: 9px;
-  border-radius: 2px;
-}
-
-.structure-legend span[data-legend="route"]::before {
-  background: var(--selected-soft);
-  box-shadow: inset 0 0 0 1.5px var(--selected);
-}
-
-.structure-legend span[data-legend="write"]::before {
-  background: var(--committed-soft);
-  box-shadow: inset 0 0 0 1.5px var(--committed);
-}
-
-.structure-legend span[data-legend="selected"]::before {
-  background: var(--selected);
-}
-
-.structure-legend-note {
-  margin-left: auto;
-  color: var(--ink-ghost);
 }
 
 @media (max-width: 900px) {

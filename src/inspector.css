@@ -11,7 +11,7 @@
 
 .inspect-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
 }
@@ -107,7 +107,7 @@
 
 .page-map-head {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   font-size: 9px;
   letter-spacing: 0.1em;
   color: var(--ink-faint);
@@ -153,9 +153,6 @@
 }
 
 .page-map-foot {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
   font-size: 10px;
   color: var(--ink-faint);
 }
@@ -165,7 +162,7 @@
   font-weight: 600;
 }
 
-.page-map-foot span[data-tight] {
+.page-map-foot strong[data-tight] {
   color: var(--staged);
 }
 
@@ -204,23 +201,24 @@
 
 /* ── facts ──────────────────────────────────────────────────────────── */
 
+/* Two short values do not need two boxes. */
 .inspect-facts {
   display: flex;
-  gap: 8px;
+  align-items: baseline;
+  gap: 14px;
   margin: 0;
+  font-family: var(--mono);
+  font-size: 11px;
 }
 
 .inspect-facts > div {
-  flex: 1;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   min-width: 0;
-  padding: 8px 10px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--bg-sunken);
 }
 
 .inspect-facts dt {
-  font-family: var(--mono);
   font-size: 9px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -228,9 +226,8 @@
 }
 
 .inspect-facts dd {
-  margin: 3px 0 0;
-  font-size: 13px;
-  color: var(--ink);
+  margin: 0;
+  color: var(--ink-dim);
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -751,19 +748,21 @@
 
 .inspect-lineage {
   padding: 0 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 .inspect-lineage p {
-  color: var(--ink-faint);
-  font-size: 11px;
-  line-height: 1.5;
+  font-family: var(--mono);
+  color: var(--ink-ghost);
+  font-size: 10px;
+  letter-spacing: 0.04em;
 }
 .inspect-log-links {
   display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 5px;
+  gap: 7px;
+}
+.inspect-log-links > .kicker {
+  flex: none;
 }
 .inspect-log-links button,
 .inspect-record-link button {

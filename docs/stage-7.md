@@ -138,11 +138,56 @@ engine loss with stale verified state.
 - [The checkpointed main file](media/walnut-checkpoint.png)
 - [Narrow layout at 390 px](media/walnut-narrow.png)
 
+## Density pass
+
+A second owner walkthrough reported that the workspace still had "a lot going
+on" while clicking through the database. A measurement on a 1512 x 950 viewport
+agreed: 192 elements carrying visible text above the fold, of which 86 were in
+the tree. The single region meant to be the calm subject was the noisiest on
+screen.
+
+The cause was uniform emphasis, not features. Every panel carried a kicker, a
+title and a legend; the same number appeared in three places; each page card
+carried nine readouts; and after a bulk insert every page was flagged as
+changed, which made the state colour meaningless exactly where it was looked at
+most.
+
+What changed, with no capability removed:
+
+- **Page cards go from nine readouts to five.** The identifier, the entry count,
+  the first key, the bytes used, and the fill bar. The percentage was dropped
+  because the bar already carries it, and the `from`/`sep` prefix because the
+  card's role already says which it is.
+- **A broad commit now reads quietly.** When a commit changes more than six
+  pages, the change keeps its left edge marker but loses the tint, the coloured
+  bar and the badge. A split that touches three pages still reads loud. Colour
+  stays informative instead of firing on everything at once.
+- **Removed as duplication:** the page and level counts in the tree heading
+  (the status strip reports them), the standing legend row (moved to a
+  screen-reader description, since the palette is consistent and the operation
+  bar names each state), the "child pointers" tag on the edges, the keyboard
+  hint on the page map (now a tooltip), the generation fact that repeated the
+  delta line, and the post-command notice that restated the operation headline.
+- **Collapsed to one line:** level captions, the page byte readouts (used, full
+  and free became one), the record-list column caption, page generation and
+  CRC32, and the console's heading.
+- **Deferred to tooltips:** the value-field hint, the operation descriptions on
+  the command tabs, and the database-control subtitles. Byte counters on the key
+  and value fields appear once the input passes half its limit.
+
+The tree dropped from 86 visible text elements to 55 and the console from 25 to 14. The page is 111 px shorter, so more of the inspector now sits above the
+fold; the above-fold total is therefore a poor comparison, and the per-region
+counts are the honest ones.
+
 ## Honest limits
 
-- The visitor comprehension criterion in the gameplan is still **open**. This
-  phase rebuilt the interface against the recorded feedback; it has not yet been
-  watched in front of a new reader.
+- The visitor comprehension criterion in the gameplan is still **open**. Two
+  owner walkthroughs drove this phase: the first produced the redesign, the
+  second produced the density pass above. Neither has been repeated with a new
+  technical reader.
+- The page inspector is now the densest region on screen. A root routing table
+  with 31 separators renders 32 rows inside its own scroll box; that is real
+  data rather than decoration, but it has not been trimmed.
 - Durability claims are unchanged and still bounded by the documented failure
   model. Process termination and simulated storage failures do not establish
   hardware power-loss survival.

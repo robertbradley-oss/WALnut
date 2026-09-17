@@ -143,7 +143,7 @@ test("offline first experiment links WAL images without retaining a selection ac
   await page.getByRole("button", { name: /^Step 3:/ }).click();
   await expect(page.locator(".canvas-page[data-log]")).toHaveCount(0);
   await expect(page.getByLabel("Page and log relationship")).toContainText(
-    "No image of this page in the retained log",
+    "Not in the retained log",
   );
   await expect(
     page.getByLabel("Changes since previous operation"),

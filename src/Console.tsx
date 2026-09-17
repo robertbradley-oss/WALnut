@@ -217,22 +217,16 @@ export function Console({
   const invalid = operation === "range" ? invalidRange : invalidKey;
   return (
     <section className="console" aria-labelledby={`${id}-heading`}>
-      <header className="console-head">
-        <div>
-          <span className="kicker">Command</span>
-          <h2 id={`${id}-heading`}>Drive the engine</h2>
-        </div>
-        <span className="console-prompt num" aria-hidden="true">
-          &gt;_
-        </span>
-      </header>
+      <h2 className="kicker console-head" id={`${id}-heading`}>
+        Command
+      </h2>
 
       <div className="console-ops" role="group" aria-label="Operation">
         {(
           [
-            ["put", "PUT", "Write"],
-            ["get", "GET", "Read"],
-            ["range", "SCAN", "Range"],
+            ["put", "PUT", "write a key"],
+            ["get", "GET", "read a key"],
+            ["range", "SCAN", "read a range"],
           ] as const
         ).map(([kind, label, description]) => (
           <button
@@ -241,9 +235,9 @@ export function Console({
             aria-pressed={operation === kind}
             onClick={() => changeOperation(kind)}
             disabled={working}
+            title={description}
           >
             <b className="num">{label}</b>
-            <span>{description}</span>
           </button>
         ))}
       </div>
@@ -321,12 +315,14 @@ export function Console({
           <>
             <label htmlFor={`${id}-key`}>
               Key{" "}
-              <span
-                aria-hidden="true"
-                className={`num ${keyBytes > 64 ? "console-invalid" : ""}`}
-              >
-                {keyBytes} / 64 B
-              </span>
+              {keyBytes > 32 && (
+                <span
+                  aria-hidden="true"
+                  className={`num ${keyBytes > 64 ? "console-invalid" : ""}`}
+                >
+                  {keyBytes} / 64 B
+                </span>
+              )}
             </label>
             <input
               ref={keyInput}
@@ -351,12 +347,14 @@ export function Console({
           <>
             <label htmlFor={`${id}-value`}>
               Value{" "}
-              <span
-                aria-hidden="true"
-                className={`num ${invalidValue ? "console-invalid" : ""}`}
-              >
-                {valueBytes.toLocaleString()} / 1,024 B
-              </span>
+              {valueBytes > 512 && (
+                <span
+                  aria-hidden="true"
+                  className={`num ${invalidValue ? "console-invalid" : ""}`}
+                >
+                  {valueBytes.toLocaleString()} / 1,024 B
+                </span>
+              )}
             </label>
             <textarea
               id={`${id}-value`}
@@ -368,7 +366,7 @@ export function Console({
               aria-invalid={invalidValue}
               aria-describedby={`${id}-value-help`}
             />
-            <p className="console-help" id={`${id}-value-help`}>
+            <p className="sr-only" id={`${id}-value-help`}>
               An existing key is updated. An empty value is valid.
             </p>
           </>
@@ -390,7 +388,7 @@ export function Console({
                 ? "Find this key"
                 : "Scan this range"}
           </span>
-          <i aria-hidden="true">{working ? "···" : "↵"}</i>
+          {working && <i aria-hidden="true">···</i>}
         </button>
         {operation === "put" && (
           <>
@@ -402,7 +400,7 @@ export function Console({
               }
               onClick={() => void execute("stage")}
             >
-              <i aria-hidden="true">+</i> Stage in batch
+              Stage in batch
             </button>
             {staged.length > 0 && (
               <p className="console-help">
@@ -524,30 +522,32 @@ export function Console({
         </section>
       )}
 
+      {/* Growing the tree is how a visitor makes it interesting, so it stays
+          visible; both controls lose their subtitles to a tooltip. */}
       <div className="console-utilities">
         <button
           type="button"
           className="console-utility"
           disabled={disabled || !!staged.length}
           aria-label="Insert 64 sample records"
+          title="Commit 64 deterministic records with 64-byte keys and 1,000-byte values"
           onClick={() => void execute("grow")}
         >
-          <b>+ 64 sample records</b>
-          <small>Deterministic keys with 1,000-byte values</small>
+          + 64 sample records
         </button>
         <button
           type="button"
           className="console-utility"
           aria-label="Reopen database"
+          title={
+            staged.length
+              ? "Discards staged puts, then replays the WAL"
+              : "Replays the WAL and re-verifies the whole tree"
+          }
           disabled={working || waiting}
           onClick={() => void execute("reopen")}
         >
-          <b>Close and reopen</b>
-          <small>
-            {staged.length
-              ? "Discards staged puts, replays the WAL"
-              : "Replays the WAL and re-verifies the tree"}
-          </small>
+          Close and reopen
         </button>
       </div>
     </section>

@@ -271,10 +271,6 @@ export default function App() {
           setNotice("Command completed. Select its page to retry inspection.");
         }
       }
-      if (kind === "grow")
-        setNotice(
-          "64 sample records committed. Walk the page map to follow the new pages.",
-        );
       return response;
     } catch (error) {
       noteUnavailable(error);
