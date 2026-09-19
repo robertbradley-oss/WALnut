@@ -112,7 +112,7 @@
   flex-direction: column;
   gap: var(--gap);
   padding: var(--gap) 20px 28px;
-  max-width: 1760px;
+  max-width: 1680px;
   width: 100%;
   margin: 0 auto;
 }
@@ -528,6 +528,16 @@
 }
 
 /* ── responsive ─────────────────────────────────────────────────────── */
+
+/* The workspace has a natural size. Past it the extra width used to go
+   entirely to the tree, which does not need it, while the rail's labels drifted
+   away from their values and a single page card floated in a void. */
+@media (min-width: 1500px) {
+  :root {
+    --rail: 318px;
+    --inspect: 396px;
+  }
+}
 
 @media (max-width: 1440px) {
   :root {

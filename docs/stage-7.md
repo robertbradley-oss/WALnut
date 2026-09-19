@@ -206,12 +206,43 @@ one hairline.
 still carries a border is a page card, an input, a byte picture, a log
 transaction or a button — so a rectangle on screen once again means something.
 
+## Wide-viewport pass
+
+Reviewing the deployed demo on a 1920 px screen showed a different failure from
+the density work: nothing was crowded, but everything stretched. The columns are
+fixed pixel widths, so all surplus width went to the tree, which did not need
+it, while the page inspector stayed at 310 px and truncated its keys. A single
+page card floated in a stage that was 93% empty, and the durability rail's log
+zone grew wide enough to fling "64 B on disk" far away from the label it
+belongs to.
+
+- The workspace is capped at 1680 px and centres past that. The rail, the
+  inspector and the tree all have a natural size; beyond it the layout settles
+  instead of spreading.
+- The inspector widens to 396 px above 1500 px, so record keys read without
+  truncation.
+- Page cards scale with how many share the widest row: up to 430 px for a
+  single page, 360 for two, 306 for four, 268 beyond that. A one-page database
+  is the whole database at that moment and now looks like it.
+- Durability zones share the row proportionally, and a zone's label keeps its
+  byte count beside it rather than at the far edge.
+
+Two defects surfaced while measuring. A negative right margin on the record
+list pushed four pixels past the inspector column and produced a visible
+horizontal scrollbar. And the tree's card band reserved only the elision
+gutters, not the scene padding, so a wide single card overflowed its viewport
+at narrow widths and "Fit" could never return to 100%; the browser suite caught
+the second one.
+
 ## Honest limits
 
-- The visitor comprehension criterion in the gameplan is still **open**. Four
+- The visitor comprehension criterion in the gameplan is still **open**. Five
   owner walkthroughs drove this phase: the first produced the redesign, the
-  second and third the density pass, the fourth the flattening pass. None has
-  been repeated with a new technical reader.
+  second and third the density pass, the fourth the flattening pass, the fifth
+  the wide-viewport pass. None has been repeated with a new technical reader.
+- Three region cards remain bordered because they were missed when the rest
+  were flattened: the advanced crash lab disclosure, the pre-connection
+  placeholder and the empty inspector placeholder.
 - The page inspector is now the densest region on screen. A root routing table
   with 31 separators renders 32 rows inside its own scroll box; that is real
   data rather than decoration, but it has not been trimmed.

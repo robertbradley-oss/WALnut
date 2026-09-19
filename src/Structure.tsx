@@ -41,7 +41,7 @@ interface Row {
   afterId: number | null;
 }
 
-const CARD_H = 118;
+const CARD_H_MIN = 118;
 const ROW_GAP = 44;
 const CARD_GAP = 20;
 const PAD = 24;
@@ -238,11 +238,15 @@ export function Structure({
   const widest = Math.max(1, ...rows.map((row) => row.pages.length));
   // Elision chips sit outside the card band, so reserve their gutters first.
   const gutter = rows.some((row) => row.before > 0 || row.after > 0) ? 52 : 0;
-  const band = Math.max(200, available - gutter * 2);
+  const band = Math.max(200, available - Math.max(PAD, gutter) * 2);
+  // A shallow tree used to leave the stage almost empty on a wide screen.
+  // Fewer cards in the widest row means each card can claim more of it.
+  const cap = widest === 1 ? 430 : widest <= 2 ? 360 : widest <= 4 ? 306 : 268;
   const cardW = Math.max(
     138,
-    Math.min(268, (band - CARD_GAP * (widest - 1)) / widest),
+    Math.min(cap, (band - CARD_GAP * (widest - 1)) / widest),
   );
+  const CARD_H = Math.max(CARD_H_MIN, Math.min(156, Math.round(cardW * 0.44)));
   const sceneW = Math.max(
     available,
     widest * cardW + CARD_GAP * (widest - 1) + Math.max(PAD, gutter) * 2,
