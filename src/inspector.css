@@ -2,10 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--bg-panel);
+  padding: 4px 0 4px 18px;
   min-width: 0;
 }
 
@@ -297,11 +294,9 @@
 .inspect-link {
   font-family: var(--mono);
   font-size: 11px;
-  padding: 2px 6px;
-  border-radius: var(--r-sm);
+  white-space: nowrap;
   color: var(--selected);
-  background: var(--selected-soft);
-  transition: background var(--quick) var(--ease);
+  transition: color var(--quick) var(--ease);
 }
 
 .inspect-link i {
@@ -310,8 +305,8 @@
 }
 
 .inspect-link:hover {
-  background: var(--selected-line);
   color: var(--ink);
+  text-decoration: underline;
 }
 
 /* ── records ────────────────────────────────────────────────────────── */
@@ -437,8 +432,6 @@
 .routing-scroll {
   max-height: 260px;
   overflow: auto;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
 }
 
 .routing-table {

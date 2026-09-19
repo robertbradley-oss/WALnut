@@ -47,14 +47,17 @@ presented as a fresh check of this interface revision.
 
 ## Visitor walkthrough
 
-Three owner walkthroughs have shaped this interface. The first found it
+Four owner walkthroughs have shaped this interface. The first found it
 uninterpretable and prompted the redesign. The second still found it difficult
 to read. The third reported that the workspace had "a lot going on" while
 clicking through the database, which produced the measured
 [density pass](stage-7.md#density-pass): the tree dropped from 86 visible text
 elements to 55, the command console from 25 to 14, and a commit that rewrites
-most of the tree now reads quietly so the state colours stay informative. No
-capability was removed.
+most of the tree now reads quietly so the state colours stay informative. The
+fourth prompted the [flattening pass](stage-7.md#flattening-pass): bordered
+surfaces above the fold fell from 24 to 13 once interface regions stopped being
+cards, leaving borders to mean a real object in the database. No capability was
+removed by either pass.
 
 Comprehension by a new technical reader remains unproven. Automated tests verify
 state and interaction behavior; they cannot establish whether a visitor

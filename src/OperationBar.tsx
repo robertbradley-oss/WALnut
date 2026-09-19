@@ -378,24 +378,26 @@ export function OperationBar({
             ))}
           </div>
         )}
-        {operation.evidence && (
+        {/* The change line above answers "what changed"; the engine's own
+            sentence and the per-operation counters are the next layer down. */}
+        {(operation.evidence || operation.facts.length > 0) && (
           <details className="operation-evidence">
             <summary>Operation details</summary>
-            <p>{operation.evidence}</p>
+            {operation.evidence && <p>{operation.evidence}</p>}
+            <dl className="operation-facts">
+              {operation.facts.map((fact) => (
+                <div key={fact.label} data-tone={fact.tone}>
+                  <dt>{fact.label}</dt>
+                  <dd className="num" title={fact.value}>
+                    {fact.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </details>
         )}
         {notice}
       </div>
-      <dl className="operation-facts">
-        {operation.facts.map((fact) => (
-          <div key={fact.label} data-tone={fact.tone}>
-            <dt>{fact.label}</dt>
-            <dd className="num" title={fact.value}>
-              {fact.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
       {children && <div className="operation-next">{children}</div>}
     </section>
   );

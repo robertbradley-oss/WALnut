@@ -3,10 +3,7 @@
   display: flex;
   align-items: stretch;
   gap: 0;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--bg-panel);
-  overflow: hidden;
+  padding-left: 14px;
 }
 
 /* The tone stripe is the operation's state, restated as colour. */
@@ -173,9 +170,9 @@
 
 .operation-facts {
   display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
-  margin: 0;
-  flex: none;
+  margin: 8px 0 0;
 }
 
 .operation-facts > div {
@@ -183,8 +180,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 3px;
-  padding: 13px 15px;
-  border-left: 1px solid var(--line-faint);
+  padding: 0 22px 0 0;
   min-width: 0;
 }
 

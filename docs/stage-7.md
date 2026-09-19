@@ -179,12 +179,39 @@ The tree dropped from 86 visible text elements to 55 and the console from 25 to 
 fold; the above-fold total is therefore a poor comparison, and the per-region
 counts are the honest ones.
 
+## Flattening pass
+
+A fourth walkthrough still reported "quite a bit going on". Two rounds of
+trimming words had not moved it, which meant the metric was wrong. Counting
+bordered or filled surfaces instead of text found 24 above the fold on a
+1512 x 950 viewport: every region was a card, and most cards contained cards.
+Removing words from inside boxes does not reduce the feeling of boxes.
+
+The rule now is explicit: **a border means a real object in the database.** A
+page, a log transaction, a byte span. Interface regions get space and at most
+one hairline.
+
+- The seven region cards — status strip, operation bar, console, tree,
+  inspector, durability rail, timeline — lost their border, background and
+  radius. Columns are separated by a single hairline and by padding.
+- Nested containers went with them: the zoom cluster's group box, the command
+  tab track (now text tabs with an underline on the active one), the three
+  durability zone cards, the routing table's frame and its per-row chips, the
+  experiment brief, and the database-control buttons (now plain links).
+- The operation bar's counter row moved inside the "Operation details"
+  disclosure it already had. The bar reads as a command, a sentence and a
+  change line; page images, bytes appended and durability sit one click down.
+
+24 bordered surfaces became 13, and the page is another 72 px shorter. What
+still carries a border is a page card, an input, a byte picture, a log
+transaction or a button — so a rectangle on screen once again means something.
+
 ## Honest limits
 
-- The visitor comprehension criterion in the gameplan is still **open**. Two
+- The visitor comprehension criterion in the gameplan is still **open**. Four
   owner walkthroughs drove this phase: the first produced the redesign, the
-  second produced the density pass above. Neither has been repeated with a new
-  technical reader.
+  second and third the density pass, the fourth the flattening pass. None has
+  been repeated with a new technical reader.
 - The page inspector is now the densest region on screen. A root routing table
   with 31 separators renders 32 rows inside its own scroll box; that is real
   data rather than decoration, but it has not been trimmed.
