@@ -598,7 +598,13 @@ export default function App() {
           label={recorded ? "Current story step" : "Current operation"}
           badge={recorded ? "RECORDED" : "LIVE"}
           badgeTone={
-            recorded ? (stopped ? "failed" : "checkpointed") : "committed"
+            recorded
+              ? stopped
+                ? "failed"
+                : "checkpointed"
+              : available
+                ? "committed"
+                : "failed"
           }
           badgeNote={
             recorded

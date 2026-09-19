@@ -206,6 +206,15 @@ one hairline.
 still carries a border is a page card, an input, a byte picture, a log
 transaction or a button — so a rectangle on screen once again means something.
 
+Three regions were missed in that sweep and flattened afterwards: the advanced
+crash lab disclosure, which appears on every live screen, and the two
+placeholders shown before the engine answers. The stage placeholder now carries
+the same column rules as the tree it replaces, the inspector placeholder matches
+the inspector, and the crash lab reads as a section break like the timeline.
+Reviewing the placeholder state also caught the live badge holding its committed
+green while its own label read "no engine"; it turns red when no engine is
+attached.
+
 ## Wide-viewport pass
 
 Reviewing the deployed demo on a 1920 px screen showed a different failure from
@@ -240,9 +249,8 @@ the second one.
   owner walkthroughs drove this phase: the first produced the redesign, the
   second and third the density pass, the fourth the flattening pass, the fifth
   the wide-viewport pass. None has been repeated with a new technical reader.
-- Three region cards remain bordered because they were missed when the rest
-  were flattened: the advanced crash lab disclosure, the pre-connection
-  placeholder and the empty inspector placeholder.
+- The transient command notice keeps a border. It is a momentary message
+  rather than a region, and its error variant needs to read as an alert.
 - The page inspector is now the densest region on screen. A root routing table
   with 31 separators renders 32 rows inside its own scroll box; that is real
   data rather than decoration, but it has not been trimmed.

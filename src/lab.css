@@ -363,9 +363,8 @@
   min-height: 460px;
   padding: 40px;
   text-align: center;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--bg-panel);
+  border-left: 1px solid var(--line);
+  border-right: 1px solid var(--line);
 }
 
 .lab-empty h2 {
@@ -414,10 +413,7 @@
   display: flex;
   flex-direction: column;
   gap: 9px;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--bg-panel);
+  padding: 4px 0 4px 18px;
 }
 
 .inspect-placeholder p {
@@ -445,9 +441,7 @@
 /* ── advanced ───────────────────────────────────────────────────────── */
 
 .lab-advanced {
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--bg-panel);
+  border-top: 1px solid var(--line);
   overflow: hidden;
 }
 
@@ -455,7 +449,7 @@
   display: flex;
   align-items: baseline;
   gap: 11px;
-  padding: 13px 16px;
+  padding: 14px 16px 13px 0;
   cursor: pointer;
   list-style: none;
   font-size: 13px;
