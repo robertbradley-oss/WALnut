@@ -215,6 +215,12 @@ Reviewing the placeholder state also caught the live badge holding its committed
 green while its own label read "no engine"; it turns red when no engine is
 attached.
 
+The transient command notice was the last container to go. It is a momentary
+message rather than a region, so it now carries a tone rule on its left edge —
+the same device the operation bar and the experiment brief use — with red rule
+and red text when a command fails. That leaves the engine-offline alert as the
+only boxed message, which it earns by holding a Reconnect button.
+
 ## Wide-viewport pass
 
 Reviewing the deployed demo on a 1920 px screen showed a different failure from
@@ -249,8 +255,9 @@ the second one.
   owner walkthroughs drove this phase: the first produced the redesign, the
   second and third the density pass, the fourth the flattening pass, the fifth
   the wide-viewport pass. None has been repeated with a new technical reader.
-- The transient command notice keeps a border. It is a momentary message
-  rather than a region, and its error variant needs to read as an alert.
+- The engine-offline alert keeps its box. It carries a Reconnect button and
+  reports a state the reader must not miss, so it is the one place where a
+  container still earns itself.
 - The page inspector is now the densest region on screen. A root routing table
   with 31 separators renders 32 rows inside its own scroll box; that is real
   data rather than decoration, but it has not been trimmed.

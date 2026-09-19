@@ -307,17 +307,14 @@
 }
 
 .lab-notice {
-  padding: 9px 14px;
-  border-radius: var(--r);
-  border: 1px solid var(--line);
-  background: var(--bg-panel);
+  padding: 1px 0 1px 13px;
+  border-left: 2px solid var(--line-strong);
   font-size: 12px;
   color: var(--ink-dim);
 }
 
 .lab-notice[data-kind="error"] {
-  border-color: var(--failed-line);
-  background: var(--failed-soft);
+  border-left-color: var(--failed);
   color: var(--failed);
 }
 
