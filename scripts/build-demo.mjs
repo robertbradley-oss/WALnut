@@ -85,7 +85,7 @@ const html = `<!doctype html>
 <html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#121411"><meta name="description" content="Follow a write through a real Rust database. Three self-contained recordings of B+ tree splits, crash recovery, and checkpoints.">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
-<link rel="icon" href="${icon}"><title>WALnut — A database, from the inside</title><style>${css}</style></head>
+<link rel="icon" href="${icon}"><title>WALnut</title><style>${css}</style></head>
 <body><div id="root"></div><noscript>This recording needs JavaScript to display its captured pages. No server or network connection is required.</noscript>
 <script id="walnut-recordings" type="application/json">${embedded}</script><script>${script}</script></body></html>
 `;
