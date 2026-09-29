@@ -197,6 +197,27 @@ impl Node {
             Contents::Internal { keys, .. } => keys.len(),
         }
     }
+    pub(crate) fn first_key(&self) -> Result<&str> {
+        match &self.contents {
+            Contents::Leaf { entries, .. } => entries.first().map(|e| e.0.as_str()),
+            Contents::Internal { keys, .. } => keys.first().map(String::as_str),
+        }
+        .ok_or_else(|| bad("Page has no keys."))
+    }
+    pub(crate) fn last_key(&self) -> Result<&str> {
+        match &self.contents {
+            Contents::Leaf { entries, .. } => entries.last().map(|e| e.0.as_str()),
+            Contents::Internal { keys, .. } => keys.last().map(String::as_str),
+        }
+        .ok_or_else(|| bad("Page has no keys."))
+    }
+    /// The next-leaf link, or 0 for internal pages and the last leaf.
+    pub(crate) fn next_leaf(&self) -> u32 {
+        match self.contents {
+            Contents::Leaf { next, .. } => next,
+            Contents::Internal { .. } => 0,
+        }
+    }
     pub fn used_bytes(&self) -> usize {
         HEADER_SIZE
             + match &self.contents {

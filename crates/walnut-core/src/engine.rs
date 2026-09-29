@@ -139,9 +139,7 @@ fn load_tree<S: Storage>(data: &mut S, meta: Meta, overlay: &BTreeMap<u32, Image
         }
         pages.insert(id, node);
     }
-    let tree = Tree { meta, pages };
-    tree.validate()?;
-    Ok(tree)
+    Tree::from_pages(meta, pages)
 }
 
 impl<D: Storage, W: Storage> Engine<D, W> {
@@ -659,12 +657,12 @@ impl<D: Storage, W: Storage> Engine<D, W> {
             storage_format_version: 3,
             database_id: self.id.iter().map(|b| format!("{b:02x}")).collect(),
             page_id: id,
-            page_kind: node.map_or("metadata", Node::kind),
+            page_kind: node.map_or("metadata", |n| n.kind()),
             page_generation: node.map_or(self.tree.meta.generation, |p| p.generation),
             generation: self.tree.meta.generation,
             page_size: PAGE_SIZE,
             header_size: HEADER_SIZE,
-            used_bytes: node.map_or(HEADER_SIZE, Node::used_bytes),
+            used_bytes: node.map_or(HEADER_SIZE, |n| n.used_bytes()),
             key_limit: KEY_LIMIT,
             value_limit: VALUE_LIMIT,
             checksum: format!("{:08x}", n32(&bytes, 28)),
@@ -675,13 +673,13 @@ impl<D: Storage, W: Storage> Engine<D, W> {
             root_page_id: self.tree.meta.root,
             state_checksum: format!("{:08x}", self.tree.meta.state_crc),
             pages: self.tree.summaries(),
-            records: node.map_or_else(Vec::new, Node::records),
+            records: node.map_or_else(Vec::new, |n| n.records()),
             bytes: bytes.to_vec(),
             last_search_path: self.last_path.clone(),
             changed_pages: self.changed_pages.clone(),
             splits: self.splits.clone(),
             staged: self.pending.clone(),
-            staged_used_bytes: staged.map(|p| p.tree.pages.values().map(Node::used_bytes).sum()),
+            staged_used_bytes: staged.map(|p| p.tree.pages.values().map(|n| n.used_bytes()).sum()),
             staged_page_count: staged.map(|p| p.tree.pages.len()),
             checkpoint_generation: self.checkpoint.as_ref().map(|t| t.meta.generation),
             checkpoint_bytes,

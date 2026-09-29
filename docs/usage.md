@@ -99,7 +99,7 @@ The original stays intact, including any source WAL tail. Migration recovers a m
 - A React workbench with navigable tree pages, search paths, range results, leaf links, WAL lane, staged/committed/checkpointed states, exact hex views, and real subprocess split recovery.
 - Three deterministic recorded stories with playback, stepping, speed, reset, zoom, keyboard controls, reduced motion, and offline inspection of captured pages.
 
-**Bounds:** 1,024 node pages plus metadata; 1–64 puts per batch; 1–256 results per range request; manual checkpoint after 1,024 transactions or 32 MiB of WAL. The complete tree is held in memory and candidate validation examines the whole tree. There is no deletion, space reclamation, SQL, or concurrent writer.
+**Bounds:** 1,024 node pages plus metadata; 1–64 puts per batch; 1–256 results per range request; manual checkpoint after 1,024 transactions or 32 MiB of WAL. The complete tree is held in memory. Commit verification examines the changed pages; opening a database validates the whole tree. There is no deletion, space reclamation, SQL, or concurrent writer.
 
 **Persistence boundary:** a commit returns after WAL synchronization and read-back. Within the [tree and failure contract](tree-contract.md), acknowledged commits survive recovery and batches appear whole, including every page in a split. A complete valid commit whose reply was interrupted may also survive. Tests cover process termination and modeled storage failures; they do not establish physical power-loss survival across all devices/filesystems. Failed I/O requires reopen. CRC32 detects accidental corruption, not tampering.
 

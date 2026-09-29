@@ -6,12 +6,64 @@ use crate::{
     },
 };
 use serde::Serialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::{Arc, OnceLock},
+};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Candidate trees share every page they do not change, so planning a write
+/// copies pointers rather than records.
+#[derive(Clone, Debug)]
 pub struct Tree {
     pub meta: Meta,
-    pub pages: BTreeMap<u32, Node>,
+    pub pages: BTreeMap<u32, Arc<Node>>,
+    /// CRC-32 of each node's encoded image, in ID order. `seal` rebuilds it;
+    /// a prepared batch refreshes only the pages it changed.
+    crcs: Vec<u32>,
+}
+// Equality is the tree's contents; the checksum cache is derived from them.
+impl PartialEq for Tree {
+    fn eq(&self, other: &Self) -> bool {
+        self.meta == other.meta && self.pages == other.pages
+    }
+}
+impl Eq for Tree {}
+
+/// Linear map taking crc(a) to its contribution to crc(a || page) for any
+/// page-sized suffix, split into one lookup table per input byte.
+fn page_shift() -> &'static [[u32; 256]; 4] {
+    static TABLES: OnceLock<[[u32; 256]; 4]> = OnceLock::new();
+    TABLES.get_or_init(|| {
+        let zeros = [0; PAGE_SIZE];
+        let extend = |crc| {
+            let mut h = crc32fast::Hasher::new_with_initial(crc);
+            h.update(&zeros);
+            h.finalize()
+        };
+        // Resuming a CRC over n bytes is affine in the starting CRC, and its
+        // linear part depends only on n; removing the constant leaves it.
+        let offset = extend(0);
+        let mut tables = [[0; 256]; 4];
+        for (byte, table) in tables.iter_mut().enumerate() {
+            for (value, entry) in table.iter_mut().enumerate() {
+                *entry = (0..8)
+                    .filter(|bit| value >> bit & 1 == 1)
+                    .map(|bit| extend(1 << (8 * byte + bit)) ^ offset)
+                    .fold(0, |a, b| a ^ b);
+            }
+        }
+        tables
+    })
+}
+
+/// The state checksum: CRC-32 over every encoded node image in ID order,
+/// combined from per-page CRCs instead of rehashing the pages.
+fn combine(crcs: &[u32]) -> u32 {
+    let t = page_shift();
+    crcs.iter().fold(0, |state, page| {
+        let [a, b, c, d] = state.to_le_bytes();
+        t[0][a as usize] ^ t[1][b as usize] ^ t[2][c as usize] ^ t[3][d as usize] ^ page
+    })
 }
 #[derive(Clone, Debug, Serialize)]
 pub struct PageSummary {
@@ -77,10 +129,24 @@ impl Tree {
                 records: 0,
                 state_crc: 0,
             },
-            pages: BTreeMap::from([(1, Node::leaf(1, 0))]),
+            pages: BTreeMap::from([(1, Arc::new(Node::leaf(1, 0)))]),
+            crcs: vec![],
         };
         tree.seal().expect("empty tree encodes");
         tree
+    }
+    /// Builds a tree from decoded pages, fully validating it and caching the
+    /// per-page checksums that later commits update incrementally.
+    pub fn from_pages(meta: Meta, pages: BTreeMap<u32, Node>) -> Result<Self> {
+        let mut tree = Self {
+            meta,
+            pages: pages.into_iter().map(|(id, n)| (id, Arc::new(n))).collect(),
+            crcs: vec![],
+        };
+        tree.check_structure()?;
+        tree.crcs = tree.page_crcs()?;
+        tree.check_state_crc(&tree.crcs)?;
+        Ok(tree)
     }
     pub fn from_entries(
         entries: impl IntoIterator<Item = (String, String)>,
@@ -94,7 +160,7 @@ impl Tree {
             last_path: vec![],
         };
         prepared.tree.meta.generation = generation;
-        prepared.tree.pages.get_mut(&1).unwrap().generation = generation;
+        Arc::make_mut(prepared.tree.pages.get_mut(&1).unwrap()).generation = generation;
         for (key, value) in entries {
             validate_key(&key)?;
             validate_value(&value)?;
@@ -130,8 +196,14 @@ impl Tree {
             next.put(&w.key, &w.value)?;
         }
         next.last_path = next.tree.path(&writes.last().unwrap().key)?;
-        next.tree.seal()?;
-        next.tree.validate()?;
+        next.reseal()?;
+        next.verify(self)?;
+        // Every debug build, including the test suites, cross-checks the
+        // incremental verification against a complete walk of the tree.
+        #[cfg(debug_assertions)]
+        if let Err(error) = next.tree.validate() {
+            panic!("incremental verification accepted an invalid tree: {error}");
+        }
         Ok(next)
     }
     pub fn image(&self, id: u32) -> Result<Image> {
@@ -144,18 +216,38 @@ impl Tree {
                 .encode()
         }
     }
-    pub fn state_crc(&self) -> Result<u32> {
-        let mut h = crc32fast::Hasher::new();
-        for node in self.pages.values() {
-            h.update(&node.encode()?);
-        }
-        Ok(h.finalize())
+    fn page_crcs(&self) -> Result<Vec<u32>> {
+        self.pages
+            .values()
+            .map(|node| Ok(crc32fast::hash(&node.encode()?)))
+            .collect()
     }
+    /// CRC-32 over every encoded node image in ID order, recomputed from the pages.
+    pub fn state_crc(&self) -> Result<u32> {
+        Ok(combine(&self.page_crcs()?))
+    }
+    /// Re-encodes every page and records the state checksum. Call it after
+    /// editing `pages` directly.
     pub fn seal(&mut self) -> Result<()> {
-        self.meta.state_crc = self.state_crc()?;
+        self.crcs = self.page_crcs()?;
+        self.meta.state_crc = combine(&self.crcs);
         Ok(())
     }
+    fn check_state_crc(&self, crcs: &[u32]) -> Result<()> {
+        if combine(crcs) != self.meta.state_crc {
+            return Err(bad(
+                "Tree state checksum differs from metadata; the checkpoint may contain mixed page versions.",
+            ));
+        }
+        Ok(())
+    }
+    /// Complete validation, independent of any cached checksum: encodes every
+    /// page and walks the whole tree.
     pub fn validate(&self) -> Result<()> {
+        self.check_structure()?;
+        self.check_state_crc(&self.page_crcs()?)
+    }
+    fn check_structure(&self) -> Result<()> {
         self.meta.validate()?;
         if self.pages.len() != self.meta.next_id as usize - 1
             || self.pages.keys().copied().ne(1..self.meta.next_id)
@@ -181,11 +273,6 @@ impl Tree {
                 return Err(bad("Leaf chain does not match tree order."));
             }
         }
-        if self.state_crc()? != self.meta.state_crc {
-            return Err(bad(
-                "Tree state checksum differs from metadata; the checkpoint may contain mixed page versions.",
-            ));
-        }
         Ok(())
     }
     fn walk(
@@ -207,7 +294,6 @@ impl Tree {
                 "Page identity, generation, or tree depth is inconsistent.",
             ));
         }
-        node.encode()?;
         match &node.contents {
             Contents::Leaf { entries, .. } => {
                 if level != 0 || (entries.is_empty() && id != self.meta.root) {
@@ -256,6 +342,31 @@ impl Tree {
                 Ok(total)
             }
         }
+    }
+    fn page(&self, id: u32) -> Result<&Node> {
+        self.pages
+            .get(&id)
+            .map(|node| &**node)
+            .ok_or_else(|| bad("A child references an unallocated page."))
+    }
+    /// The leftmost or rightmost leaf below a page.
+    fn edge(&self, id: u32, last: bool) -> Result<&Node> {
+        let mut node = self.page(id)?;
+        for _ in 0..MAX_HEIGHT {
+            match &node.contents {
+                Contents::Leaf { .. } => return Ok(node),
+                Contents::Internal { children, .. } => {
+                    let child = if last {
+                        children.last()
+                    } else {
+                        children.first()
+                    };
+                    node =
+                        self.page(*child.ok_or_else(|| bad("Internal page has no children."))?)?;
+                }
+            }
+        }
+        Err(bad("Descent exceeded the tree height bound."))
     }
     pub fn path(&self, key: &str) -> Result<Vec<u32>> {
         let mut id = self.meta.root;
@@ -381,6 +492,161 @@ impl Tree {
 }
 
 impl Prepared {
+    /// Re-encodes only the changed pages and folds the cached checksums of the
+    /// rest into the new state checksum.
+    fn reseal(&mut self) -> Result<()> {
+        let tree = &mut self.tree;
+        tree.crcs.resize(tree.pages.len(), 0);
+        for &id in self.changed.iter().filter(|id| **id != 0) {
+            let node = tree
+                .pages
+                .get(&id)
+                .ok_or_else(|| bad("A changed page is missing from the candidate tree."))?;
+            let crc = crc32fast::hash(&node.encode()?);
+            *tree
+                .crcs
+                .get_mut(id as usize - 1)
+                .ok_or_else(|| bad("A changed page is outside the allocated range."))? = crc;
+        }
+        tree.meta.state_crc = combine(&tree.crcs);
+        Ok(())
+    }
+    /// Verifies a candidate against the validated tree it was planned from.
+    ///
+    /// Only changed pages and the routes and seams around them are visited;
+    /// untouched subtrees are the base's, which was already validated. Every
+    /// changed page must re-encode to its cached checksum and be reached by
+    /// routing through changed ancestors. Each changed internal page must hold
+    /// children one level down whose key ranges match its separators exactly
+    /// and whose boundary leaves are linked. Child references, allocation and
+    /// the record count must account for every page and record the batch added.
+    pub fn verify(&self, base: &Tree) -> Result<()> {
+        let tree = &self.tree;
+        let meta = &tree.meta;
+        meta.validate()?;
+        let fail = |message| Err(bad(message));
+        let added = base.meta.next_id..meta.next_id;
+        if base.meta.generation.checked_add(1) != Some(meta.generation)
+            || meta.next_id < base.meta.next_id
+            || tree.pages.len() != meta.next_id as usize - 1
+            || tree.pages.first_key_value().map(|(id, _)| *id) != Some(1)
+            || tree.pages.last_key_value().map(|(id, _)| *id) != Some(meta.next_id - 1)
+            || tree.crcs.len() != tree.pages.len()
+            || !self.changed.contains(&0)
+            || added.clone().any(|id| !self.changed.contains(&id))
+        {
+            return fail("Candidate generation, allocation, or changed-page set is inconsistent.");
+        }
+        let root = tree.page(meta.root)?;
+        if root.level as u32 != meta.height - 1 {
+            return fail("Root level does not match the tree height.");
+        }
+        if tree.edge(meta.root, true)?.next_leaf() != 0 {
+            return fail("The last leaf links past the end of the tree.");
+        }
+        let mut new_refs = vec![meta.root];
+        let mut old_refs = vec![base.meta.root];
+        let mut record_delta = 0i64;
+        for &id in self.changed.iter().filter(|id| **id != 0) {
+            let node = tree.page(id)?;
+            if node.id != id
+                || node.generation != meta.generation
+                || crc32fast::hash(&node.encode()?) != tree.crcs[id as usize - 1]
+            {
+                return fail("A changed page has the wrong identity, generation, or checksum.");
+            }
+            self.check_route(id, node)?;
+            match &node.contents {
+                Contents::Leaf { entries, .. } => {
+                    if entries.is_empty() && id != meta.root {
+                        return fail("Non-root leaves must contain records.");
+                    }
+                    record_delta += entries.len() as i64;
+                }
+                Contents::Internal { keys, children } => {
+                    for (index, &child) in children.iter().enumerate() {
+                        if tree.page(child)?.level + 1 != node.level {
+                            return fail("A child is not exactly one level below its parent.");
+                        }
+                        let first = tree.edge(child, false)?.first_key()?;
+                        let last_leaf = tree.edge(child, true)?;
+                        if index > 0 && first != keys[index - 1] {
+                            return fail(
+                                "A separator is not the minimum key of its right subtree.",
+                            );
+                        }
+                        if let Some(&right) = children.get(index + 1) {
+                            if last_leaf.last_key()? >= keys[index].as_str() {
+                                return fail(
+                                    "A child holds keys at or beyond its right separator.",
+                                );
+                            }
+                            if last_leaf.next_leaf() != tree.edge(right, false)?.id {
+                                return fail("Leaf links do not join adjacent subtrees.");
+                            }
+                        }
+                    }
+                    new_refs.extend(children);
+                }
+            }
+            if let Some(old) = base.pages.get(&id) {
+                match &old.contents {
+                    Contents::Leaf { entries, .. } => record_delta -= entries.len() as i64,
+                    Contents::Internal { children, .. } => old_refs.extend(children),
+                }
+            }
+        }
+        if meta.records.checked_sub(base.meta.records) != Some(record_delta as u64) {
+            return fail("Record count does not match the changed leaves.");
+        }
+        // The base references every page once. If the changed pages now
+        // reference what they did before plus each new page, exactly once,
+        // then so does the candidate; strictly decreasing levels rule out cycles.
+        let count = new_refs.len();
+        new_refs.sort_unstable();
+        new_refs.dedup();
+        old_refs.extend(added);
+        old_refs.sort_unstable();
+        if new_refs.len() != count || new_refs != old_refs {
+            return fail("Changed pages do not reference every page exactly once.");
+        }
+        if combine(&tree.crcs) != meta.state_crc {
+            return fail("Candidate state checksum does not match its pages.");
+        }
+        Ok(())
+    }
+    /// A changed page must be where routing by its smallest key leads, and every
+    /// page on the way must be changed too, so no unchanged page can hide it.
+    fn check_route(&self, id: u32, node: &Node) -> Result<()> {
+        let tree = &self.tree;
+        let Ok(probe) = tree.edge(id, false)?.first_key() else {
+            // Only an empty root leaf has no key to route by.
+            return if id == tree.meta.root {
+                Ok(())
+            } else {
+                Err(bad("Non-root leaves must contain records."))
+            };
+        };
+        let mut at = tree.meta.root;
+        for _ in 0..MAX_HEIGHT {
+            if at == id {
+                return Ok(());
+            }
+            if !self.changed.contains(&at) {
+                break;
+            }
+            let Contents::Internal { keys, children } = &tree.page(at)?.contents else {
+                break;
+            };
+            if tree.page(at)?.level <= node.level {
+                break;
+            }
+            at = children[keys.partition_point(|k| k.as_str() <= probe)];
+        }
+        Err(bad(
+            "A changed page is not reachable through changed ancestors.",
+        ))
+    }
     fn event(
         &mut self,
         kind: &'static str,
@@ -405,7 +671,7 @@ impl Prepared {
         }
         self.tree.meta.next_id += 1;
         node.id = id;
-        self.tree.pages.insert(id, node);
+        self.tree.pages.insert(id, Arc::new(node));
         self.changed.insert(id);
         self.event(
             "page_allocated",
@@ -447,11 +713,13 @@ impl Prepared {
         Ok(())
     }
     fn insert(&mut self, id: u32, key: &str, value: &str) -> Result<(bool, Option<Split>)> {
-        let mut node = self
-            .tree
-            .pages
-            .remove(&id)
-            .ok_or_else(|| bad("Insert encountered an unallocated page."))?;
+        // Copy-on-write: only pages on the insertion path are cloned.
+        let mut node = Arc::unwrap_or_clone(
+            self.tree
+                .pages
+                .remove(&id)
+                .ok_or_else(|| bad("Insert encountered an unallocated page."))?,
+        );
         node.generation = self.tree.meta.generation;
         self.changed.insert(id);
         let inserted = match &mut node.contents {
@@ -478,7 +746,7 @@ impl Prepared {
             }
         };
         if node.used_bytes() <= PAGE_SIZE {
-            self.tree.pages.insert(id, node);
+            self.tree.pages.insert(id, Arc::new(node));
             return Ok((inserted, None));
         }
         let (separator, right) = match &mut node.contents {
@@ -559,7 +827,7 @@ impl Prepared {
             Some(right),
             format!("Page {id} exceeded 4 KB; split into pages {id} and {right}."),
         );
-        self.tree.pages.insert(id, node);
+        self.tree.pages.insert(id, Arc::new(node));
         self.splits.push(split.clone());
         Ok((inserted, Some(split)))
     }

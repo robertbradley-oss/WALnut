@@ -25,11 +25,13 @@ Insertion uses binary search to choose child pages and find a key in its leaf. A
 
 A leaf split divides records near the byte midpoint, keeps the old ID for the left side, and allocates a right sibling. Leaf links and the parent separator change in the same candidate transaction. An overflowing internal page promotes a separator and divides its children. If propagation reaches the root, the candidate allocates a new root and increments tree height. No deletion, page reclamation, minimum byte occupancy, or cache eviction is implemented.
 
-Before any I/O, validation checks page structure, all allocated IDs, unique reachability, separators, key ranges, balanced depth, leaf-chain order, record count, and the complete state checksum. The limit is 1,024 node pages plus metadata. Validation and candidate copying inspect the whole bounded tree; indexed reads do not imply logarithmic transaction preparation or a tuned buffer manager.
+A candidate shares every page it does not change with the committed tree (`Arc` copy-on-write); an insert copies only the pages on its path. Before any I/O, verification visits only what the batch changed. Each changed page must re-encode to its checksum, carry the new generation, and be reached by routing through changed ancestors. Each changed internal page must have children one level down whose key ranges match its separators exactly and whose boundary leaves are linked. The child references in changed pages must account for every previous child plus each newly allocated page exactly once, and the changed leaves must account for the new record count. Unchanged subtrees are the committed tree's, which was already validated.
+
+The state checksum is still one CRC-32 over every encoded page. Each page's CRC is cached, and appending one 4 KB page is a fixed linear map on a CRC, so the tree checksum is folded from the cached values with four table lookups per page instead of re-hashing 4 MB. Opening a database and `Tree::validate` still walk and encode the whole tree. Debug builds, including every test run, repeat that full validation after each incremental verification and panic on disagreement. The limit is 1,024 node pages plus metadata; the per-page pointer copy and checksum fold remain linear but cost tens of microseconds at that bound. This is not a disk-backed buffer manager.
 
 ## Three states
 
-- **Staged:** 1–64 puts held in memory with a validated candidate tree. Reads and inspection still see the committed tree. Duplicate keys use the final value. Reopen discards staging.
+- **Staged:** 1–64 puts held in memory with a verified candidate tree. Reads and inspection still see the committed tree. Duplicate keys use the final value. Reopen discards staging.
 - **Committed:** changed page images and metadata have passed WAL sync and exact read-back. One batch increments the generation once. A new root becomes visible with all its pages.
 - **Checkpointed:** every node page and metadata have been synced and verified in the main file before the WAL is shortened and synced. A checkpoint preserves staging.
 
