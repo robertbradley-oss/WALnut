@@ -79,13 +79,13 @@ The subtle case: a successful checkpoint can leave an obsolete, valid WAL prefix
 
 ### Bounds and guarantees
 
-Keys are 1–64 UTF-8 bytes; values are 0–1,024 bytes. Batches contain 1–64 puts. The tree is bounded to 1,024 node pages plus metadata and stays in memory. Writes clone and validate a candidate tree; checkpoints are manual. There is no deletion, SQL, replication, or concurrent writer.
+Keys are 1–64 UTF-8 bytes; values are 0–1,024 bytes. Batches contain 1–64 puts. The tree is bounded to 1,024 node pages plus metadata and stays in memory. Writes plan a copy-on-write candidate that shares every untouched page, then verify the pages they changed before any I/O; checkpoints are manual. There is no deletion, SQL, replication, or concurrent writer.
 
 Acknowledged commits recover whole under the [documented failure contract](docs/tree-contract.md). A valid commit whose reply was interrupted may also survive. Tests cover process termination and modeled storage failures; they do not establish physical power-loss survival on every device/filesystem. CRC32 detects accidental corruption, not tampering.
 
 ### Measured, with context
 
-At 1,792 records on the documented Windows machine, tracing-off median point reads were about **0.4 µs**, a durable single-record update **6.1 ms**, and a durable 16-update batch **6.7 ms**. Reads use the resident tree; writes include the normal sync/read-back path. These are different workloads, not a database comparison. [Method, latency distributions, hardware, raw samples, and tracing overhead →](docs/performance.md)
+At 1,792 records on the documented Windows machine, tracing-off median point reads were about **0.4 µs**. Incremental commit verification then cut a write's CPU preparation from **3.8 ms to 42 µs**; on a Linux container a durable single-record update fell from **5.0 ms to 0.3 ms** and costs about the same at 128 or 1,792 records. Reads use the resident tree; writes include the normal sync/read-back path. These are different workloads, not a database comparison. [Method, latency distributions, hardware, raw samples, and tracing overhead →](docs/performance.md)
 
 ## Verify and reproduce
 

@@ -12,7 +12,7 @@ Validation checks IDs and bounds, checksums, ordering, exact separators, child l
 
 ## Transaction
 
-A batch of 1–64 puts constructs a candidate tree and validates it before I/O. All changes, including leaf links, internal splits, allocated pages, root and allocation metadata, belong to one transaction. Only changed node images plus page 0 enter the WAL. One synchronized commit advances the generation once; staging is invisible to reads.
+A batch of 1–64 puts constructs a copy-on-write candidate tree and verifies every changed page and its connections to the rest of the tree before I/O; debug builds also repeat the complete validation. All changes, including leaf links, internal splits, allocated pages, root and allocation metadata, belong to one transaction. Only changed node images plus page 0 enter the WAL. One synchronized commit advances the generation once; staging is invisible to reads.
 
 The variable-sized WAL record has a checksummed 64-byte header, full page images, a body checksum, and a separate 32-byte commit marker. The header bounds the image count and length before allocation and contains the previous metadata descriptor. Metadata and generation links form a contiguous chain. Every newly allocated ID must have an image in that transaction. A complete corrupt record fails closed; an incomplete final header/body/marker is discarded. A complete header with a bad checksum is corruption, not a guessed tail length.
 

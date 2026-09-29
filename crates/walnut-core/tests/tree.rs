@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 use walnut_core::{MAX_PAGES, Meta, Node, PAGE_SIZE, Tree, WriteOp, page::Contents};
 fn key(i: usize) -> String {
     format!("item/{i:05}/{}", "k".repeat(53))
@@ -168,7 +168,7 @@ fn page_codec_round_trips_and_checks_every_byte_and_short_input() {
     let tree = seed(4);
     for node in tree.pages.values() {
         let bytes = node.encode().unwrap();
-        assert_eq!(Node::decode(&bytes).unwrap(), *node);
+        assert_eq!(Node::decode(&bytes).unwrap(), **node);
         for cut in 0..PAGE_SIZE {
             assert!(Node::decode(&bytes[..cut]).is_err());
         }
@@ -195,7 +195,7 @@ fn structural_validation_rejects_broken_routing_allocation_depth_and_links() {
     assert!(bad.validate().is_err());
     let mut bad = tree.clone();
     if let Contents::Internal { keys, .. } =
-        &mut bad.pages.get_mut(&bad.meta.root).unwrap().contents
+        &mut Arc::make_mut(bad.pages.get_mut(&bad.meta.root).unwrap()).contents
     {
         keys[0] = "item/00001/incorrect".into();
     }
@@ -203,21 +203,22 @@ fn structural_validation_rejects_broken_routing_allocation_depth_and_links() {
     assert!(bad.validate().is_err());
     let mut bad = tree.clone();
     if let Contents::Internal { children, .. } =
-        &mut bad.pages.get_mut(&bad.meta.root).unwrap().contents
+        &mut Arc::make_mut(bad.pages.get_mut(&bad.meta.root).unwrap()).contents
     {
         children[0] = bad.meta.root;
     }
     bad.seal().unwrap();
     assert!(bad.validate().is_err());
     let mut bad = tree.clone();
-    if let Contents::Leaf { next, .. } = &mut bad.pages.get_mut(&1).unwrap().contents {
+    if let Contents::Leaf { next, .. } = &mut Arc::make_mut(bad.pages.get_mut(&1).unwrap()).contents
+    {
         *next = 1;
     }
     bad.seal().unwrap();
     assert!(bad.validate().is_err());
     let mut bad = tree.clone();
     let id = bad.meta.next_id;
-    bad.pages.insert(id, Node::leaf(id, 1));
+    bad.pages.insert(id, Node::leaf(id, 1).into());
     bad.meta.next_id += 1;
     bad.seal().unwrap();
     assert!(bad.validate().is_err());
@@ -225,7 +226,7 @@ fn structural_validation_rejects_broken_routing_allocation_depth_and_links() {
     bad.meta.height += 1;
     assert!(bad.validate().is_err());
     let mut bad = tree.clone();
-    bad.pages.get_mut(&1).unwrap().generation += 1;
+    Arc::make_mut(bad.pages.get_mut(&1).unwrap()).generation += 1;
     bad.seal().unwrap();
     assert!(bad.validate().is_err());
 }
@@ -267,4 +268,79 @@ fn bounds_and_allocation_exhaustion_leave_the_original_tree_unchanged() {
     ] {
         assert!(tree.with_batch(&[w]).is_err());
     }
+}
+
+#[test]
+fn state_checksum_is_still_one_crc_over_every_encoded_page() {
+    let base = seed(300);
+    let next = base.with_batch(&writes(300, 64)).unwrap().tree;
+    for tree in [&base, &next] {
+        let mut direct = crc32fast::Hasher::new();
+        for node in tree.pages.values() {
+            direct.update(&node.encode().unwrap());
+        }
+        let direct = direct.finalize();
+        assert_eq!(tree.meta.state_crc, direct);
+        assert_eq!(tree.state_crc().unwrap(), direct);
+    }
+}
+
+#[test]
+fn incremental_verification_rejects_what_a_full_walk_rejects() {
+    let base = seed(116);
+    let plan = base.with_batch(&writes(116, 2)).unwrap();
+    plan.verify(&base).unwrap();
+    let leaf_split = plan.splits.iter().find(|s| s.level == 0).unwrap().clone();
+    let root = plan.tree.meta.root;
+    type Tamper = Box<dyn Fn(&mut walnut_core::tree::Prepared)>;
+    let tampers: Vec<(&str, Tamper)> = vec![
+        (
+            "separator",
+            Box::new(move |p| {
+                if let Contents::Internal { keys, .. } =
+                    &mut Arc::make_mut(p.tree.pages.get_mut(&root).unwrap()).contents
+                {
+                    keys[0] = key(5);
+                }
+            }),
+        ),
+        (
+            "leaf link",
+            Box::new(move |p| {
+                let skip = p.tree.pages[&leaf_split.right].clone();
+                if let Contents::Leaf { next, .. } =
+                    &mut Arc::make_mut(p.tree.pages.get_mut(&leaf_split.left).unwrap()).contents
+                {
+                    let Contents::Leaf { next: after, .. } = skip.contents else {
+                        unreachable!()
+                    };
+                    *next = after;
+                }
+            }),
+        ),
+        (
+            "duplicate child",
+            Box::new(move |p| {
+                if let Contents::Internal { children, .. } =
+                    &mut Arc::make_mut(p.tree.pages.get_mut(&root).unwrap()).contents
+                {
+                    children[1] = children[0];
+                }
+            }),
+        ),
+        ("record count", Box::new(|p| p.tree.meta.records += 1)),
+    ];
+    for (name, tamper) in tampers {
+        let mut bad = base.with_batch(&writes(116, 2)).unwrap();
+        tamper(&mut bad);
+        bad.tree.seal().unwrap();
+        assert!(bad.tree.validate().is_err(), "{name}: full walk");
+        assert!(bad.verify(&base).is_err(), "{name}: incremental");
+    }
+    let mut hidden = base.with_batch(&writes(116, 2)).unwrap();
+    hidden.changed.remove(&leaf_split.right);
+    assert!(hidden.verify(&base).is_err(), "unlisted new page");
+    let mut stale = base.with_batch(&writes(116, 2)).unwrap();
+    Arc::make_mut(stale.tree.pages.get_mut(&leaf_split.left).unwrap()).generation -= 1;
+    assert!(stale.verify(&base).is_err(), "unsealed change");
 }

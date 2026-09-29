@@ -36,9 +36,11 @@ Three trials per dataset run with tracing off and on; order alternates between t
 
 Durable operations use the normal `File::sync_all` path and complete read-back verification. There is no relaxed durability mode. Recovery repeatedly closes and reopens the real pair with a warm OS file cache; it is not a process-launch benchmark or a cold boot. Every recovered database is compared against the full expected contents outside the timer.
 
-The index comparison uses the **same `Tree` object and queries**: `Tree::get` versus walking leaf links from the first leaf and comparing keys sequentially. The baseline stops when it finds the key or passes it and clones only the matching value. Both use the resident WALnut tree; neither performs file I/O or tracing. This comparison has 1,000 hit samples per size. A separate 100-sample `prepare_update` measurement clones, edits, seals, and validates a candidate tree without writing files. It isolates the CPU work in the current conservative commit design.
+The index comparison uses the **same `Tree` object and queries**: `Tree::get` versus walking leaf links from the first leaf and comparing keys sequentially. The baseline stops when it finds the key or passes it and clones only the matching value. Both use the resident WALnut tree; neither performs file I/O or tracing. This comparison has 1,000 hit samples per size. A separate 100-sample `prepare_update` measurement plans, seals, and verifies a candidate tree without writing files. It isolates the CPU work of a commit.
 
 ## Measured results
+
+These tables predate [incremental commit verification](#incremental-commit-verification), which changed the write and recovery rows. Reads and snapshots are unaffected.
 
 Collected 2026-09-15 on Windows 11 Home, build 26200, AMD Ryzen 5 7500X3D (6 cores / 12 logical CPUs), about 32 GiB RAM, KINGSTON SNV3S1000G NVMe SSD, local NTFS. Node 24.19.0; Rust 1.98.1, `x86_64-pc-windows-gnullvm`, LLVM 22.1.8. No external database benchmark is included.
 
@@ -91,11 +93,29 @@ File growth, bytes: updates keep the allocated page count constant.
 
 An indexed read follows a short in-memory path. Returning the full inspector snapshot walks all page summaries and serializes them, so inspecting every read is a different workload. The UI polls at 1.5-second intervals, allows only one snapshot request in flight, and pauses polling during commands.
 
-Candidate preparation clones and validates the complete bounded tree on every write. Its cost grows with the dataset. Batching amortizes that work and the durable sync across several puts. The current implementation deliberately retains full validation and read-back rather than trading away recovery evidence for a higher throughput number. It is not designed as a disk-backed page cache for unbounded datasets.
+Candidate preparation used to clone and validate the complete bounded tree on every write, so its cost grew with the dataset. It now copies only the changed pages and verifies them against the committed tree; see below. Batching amortizes the durable sync across several puts. Every commit still keeps WAL read-back, and opening a database still validates the whole tree. It is not designed as a disk-backed page cache for unbounded datasets.
 
 Phase 5 removes formatting and cloning of search-path trace messages when tracing is disabled, while preserving the actual path in snapshots. Tracing on/off tests compare results, complete file bytes, recovery outcomes, and path metadata. This optimization concerns read overhead; it does not establish a durable-write or recovery speedup.
 
 In the paired comparison, tracing-off lookup medians changed from about **0.4 to 0.2 µs**, **0.5 to 0.3 µs**, and **0.6 to 0.4 µs** for the three sizes. Individual largest-dataset trial medians were 0.3, 0.3, and 0.4 µs after the change. Durable-write results stayed in the same millisecond range. The independent candidate-preparation measurement explains most of the large-tree update cost.
+
+## Incremental commit verification
+
+A write used to clone every page, re-encode all of them twice (once to seal the state checksum, once to validate it), and walk the whole tree. Now the candidate shares unchanged pages, re-encodes only the changed ones, folds cached per-page CRCs into the unchanged state checksum, and verifies only the changed pages and their routes, separators, links, references and record count. [Architecture](architecture.md#insertion-and-growth) describes the checks. The complete walk still runs at open and in every debug build.
+
+Collected 2026-09-29 on a Linux cloud container: kernel 6.18, 4 logical CPUs of an Intel Xeon, about 16 GiB RAM, storage not characterized. Rust 1.98.1 release build, thin LTO. Both runs used the same harness and machine back to back. _Before_ is `6e316b9` (checked out in a separate worktree whose only extra file was a `node_modules` link, so its report says `dirty: true`); _after_ is the working tree with this change. [Before JSON](measurements/incremental-before-linux.json.gz), [after JSON](measurements/incremental-after-linux.json.gz). These are not comparable with the Windows tables above.
+
+Tracing off, pooled p50 in microseconds, before → after:
+
+| Operation                |     128 records |     512 records |     1792 records |
+| ------------------------ | --------------: | --------------: | ---------------: |
+| Candidate preparation    |    241.1 → 15.4 |    976.8 → 27.8 |    3803.7 → 41.7 |
+| Durable put              |   545.1 → 290.4 |  1499.3 → 286.2 |   4982.4 → 303.8 |
+| Durable batch: 16 puts   |   866.3 → 656.8 |  2020.2 → 801.5 |   5631.3 → 992.0 |
+| Checkpoint after 16 puts | 1331.5 → 1180.3 | 3516.6 → 3192.7 | 10353.4 → 9200.2 |
+| Recover 16 transactions  |   887.1 → 747.2 | 3061.2 → 2118.6 |  9290.5 → 7065.1 |
+
+A durable put is now dominated by the WAL write, sync and read-back and is roughly flat across dataset sizes. Recovery improved because opening encodes each page once instead of twice. Checkpoint is unchanged in kind: it still writes and verifies every node page, so it is now the operation whose cost grows with the database. Preparation still grows slightly with size because the candidate copies one pointer and folds one CRC per page.
 
 ## Inspector profile
 
