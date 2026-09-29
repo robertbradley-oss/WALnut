@@ -302,3 +302,20 @@ fn tracing_does_not_change_file_bytes_results_or_failure_outcomes() {
         contents(&mut Engine::open(c, d, false).unwrap())
     );
 }
+
+#[test]
+fn creation_is_reported_before_the_verifying_open() {
+    let (data, wal) = (support::Disk::default(), support::Disk::default());
+    let created = Engine::create(data.clone(), wal.clone(), [3; 16], true).unwrap();
+    let kinds = |e: &TestEngine| {
+        e.snapshot()
+            .unwrap()
+            .events
+            .iter()
+            .map(|event| event.kind)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(kinds(&created), ["created", "opened"]);
+    drop(created);
+    assert_eq!(kinds(&Engine::open(data, wal, true).unwrap()), ["opened"]);
+}

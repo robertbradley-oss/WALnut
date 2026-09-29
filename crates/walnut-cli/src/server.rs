@@ -245,6 +245,9 @@ fn static_file(request: Request, ui: &Path) {
         "js" => "text/javascript; charset=utf-8",
         "css" => "text/css; charset=utf-8",
         "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "webm" => "video/webm",
+        "json" => "application/json",
         "woff2" => "font/woff2",
         _ => "application/octet-stream",
     };

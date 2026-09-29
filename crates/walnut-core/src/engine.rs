@@ -170,7 +170,7 @@ impl<D: Storage, W: Storage> Engine<D, W> {
         data.sync()?;
         wal.write_all_at(0, &wal::header(wal::WAL_MAGIC, &id))?;
         wal.sync()?;
-        let mut engine = Self::open(data, wal, tracing)?;
+        let mut engine = Self::load(data, wal, tracing)?;
         engine.emit(
             "created",
             None,
@@ -178,9 +178,15 @@ impl<D: Storage, W: Storage> Engine<D, W> {
             None,
             "Created and verified a B+ tree database/WAL pair.",
         );
+        engine.announce_open();
         Ok(engine)
     }
-    pub fn open(mut data: D, mut wal: W, tracing: bool) -> Result<Self> {
+    pub fn open(data: D, wal: W, tracing: bool) -> Result<Self> {
+        let mut engine = Self::load(data, wal, tracing)?;
+        engine.announce_open();
+        Ok(engine)
+    }
+    fn load(mut data: D, mut wal: W, tracing: bool) -> Result<Self> {
         let database_bytes = data.size()?;
         if database_bytes < FILE_HEADER as u64 || database_bytes > page_offset(MAX_PAGES + 1) {
             return Err(Error::new(
@@ -270,7 +276,7 @@ impl<D: Storage, W: Storage> Engine<D, W> {
             wal.truncate(scan.valid_end)?;
         }
         wal.sync()?;
-        let mut engine = Self {
+        Ok(Self {
             data,
             wal,
             id,
@@ -301,16 +307,30 @@ impl<D: Storage, W: Storage> Engine<D, W> {
             last_path: vec![],
             changed_pages: vec![],
             splits: vec![],
-        };
-        engine.emit("opened",None,None,None,"Validated identities, committed page images, allocation, routing, leaf links, and the complete tree checksum.");
-        if engine.recovery.replayed_transactions > 0
-            || engine.recovery.discarded_tail_bytes > 0
-            || engine.recovery.repaired_page
-            || engine.recovery.obsolete_frames_removed > 0
+        })
+    }
+    fn announce_open(&mut self) {
+        self.emit(
+            "opened",
+            None,
+            None,
+            None,
+            "Validated identities, committed page images, allocation, routing, leaf links, and the complete tree checksum.",
+        );
+        if self.recovery.replayed_transactions > 0
+            || self.recovery.discarded_tail_bytes > 0
+            || self.recovery.repaired_page
+            || self.recovery.obsolete_frames_removed > 0
         {
-            engine.emit("recovery_complete",None,None,None,&format!("Recovered generation {} with {} records and {} node pages; removed {} incomplete tail bytes.",engine.tree.meta.generation,engine.tree.meta.records,engine.tree.pages.len(),engine.recovery.discarded_tail_bytes));
+            let detail = format!(
+                "Recovered generation {} with {} records and {} node pages; removed {} incomplete tail bytes.",
+                self.tree.meta.generation,
+                self.tree.meta.records,
+                self.tree.pages.len(),
+                self.recovery.discarded_tail_bytes
+            );
+            self.emit("recovery_complete", None, None, None, &detail);
         }
-        Ok(engine)
     }
     pub fn set_boundary_hook(&mut self, hook: impl FnMut(&str) + 'static) {
         self.hook = Some(Box::new(hook));
