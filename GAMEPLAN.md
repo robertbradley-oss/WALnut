@@ -60,6 +60,6 @@ Once these are satisfied, finish and present v1 before expanding scope.
 
 ## Next move
 
-The standalone project lives at `C:\Users\robby\Documents\Codex\Projects\walnut`. The foundation and atomic recovery increments are implemented locally. Next is milestone 3: carry the recovery contract into a paged B+ tree and expose its real structure in the inspector. Current evidence and remaining platform checks live in the roadmap and verification notes.
+Roadmap stages 1–7 are implemented, and the v0.1.0 release and hosted browser demo are prepared. The remaining finish-line item is criterion 4: an observed walkthrough by a new technical reader, recorded in [release verification](docs/release-candidate.md). Correct whatever that walkthrough shows is confusing before adding features. Current evidence and platform checks live in the roadmap and verification notes.
 
 **Make WALnut technologically and visually impressive.**
