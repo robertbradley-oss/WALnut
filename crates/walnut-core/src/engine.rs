@@ -7,6 +7,7 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, VecDeque},
+    sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -587,42 +588,74 @@ impl<D: Storage, W: Storage> Engine<D, W> {
         self.ready()?;
         self.operation += 1;
         self.poisoned = true;
-        if let Err(error) = self.checkpoint_io() {
-            self.emit("checkpoint_failed", None, None, None, &error.message);
-            return Err(error);
-        }
+        let written = match self.checkpoint_io() {
+            Ok(written) => written,
+            Err(error) => {
+                self.emit("checkpoint_failed", None, None, None, &error.message);
+                return Err(error);
+            }
+        };
         self.checkpoint = Some(self.tree.clone());
         self.database_bytes = page_offset(self.tree.meta.next_id);
         self.frames.clear();
         self.wal_end = FILE_HEADER as u64;
         self.poisoned = false;
-        self.emit("checkpoint_complete",None,Some(0),None,"Synced and verified all pages and metadata, then truncated and synced the WAL. Staged puts remain in memory.");
+        let detail = format!(
+            "Synced and verified {written} of {} node pages and the metadata, then truncated and synced the WAL. Staged puts remain in memory.",
+            self.tree.pages.len()
+        );
+        self.emit("checkpoint_complete", None, Some(0), None, &detail);
         Ok(())
     }
-    fn checkpoint_io(&mut self) -> Result<()> {
+    /// Node pages whose committed image differs from the one the main file
+    /// holds. Without a valid checkpoint (a new engine whose main file failed
+    /// validation), the main file is not trusted and every page is rewritten.
+    fn dirty_pages(&self) -> Vec<u32> {
+        let held = self.checkpoint.as_ref().map(|c| &c.pages);
+        self.tree
+            .pages
+            .iter()
+            .filter(|(id, page)| {
+                held.and_then(|pages| pages.get(id))
+                    .is_none_or(|old| !Arc::ptr_eq(old, page) && old != *page)
+            })
+            .map(|(id, _)| *id)
+            .collect()
+    }
+    /// Writes the changed node pages and then the metadata, syncs, and reads
+    /// every written page back before discarding the WAL. Returns how many node
+    /// pages it wrote.
+    fn checkpoint_io(&mut self) -> Result<usize> {
         self.wal.sync()?;
         self.boundary("before_checkpoint_write");
-        for id in 1..self.tree.meta.next_id {
-            self.data
-                .write_all_at(page_offset(id), &self.tree.image(id)?)?;
+        let images = self
+            .dirty_pages()
+            .into_iter()
+            .map(|id| Ok((id, self.tree.image(id)?)))
+            .collect::<Result<Vec<_>>>()?;
+        for (id, image) in &images {
+            self.data.write_all_at(page_offset(*id), image)?;
             self.boundary(&format!("after_checkpoint_page:{id}"));
         }
-        self.data
-            .write_all_at(page_offset(0), &self.tree.image(0)?)?;
+        let meta = self.tree.image(0)?;
+        self.data.write_all_at(page_offset(0), &meta)?;
         self.emit(
             "checkpoint_written",
             None,
             Some(0),
             None,
-            "Wrote all node pages and metadata last. WAL recovery copies remain available.",
+            &format!(
+                "Wrote {} changed node pages, then metadata last. Unchanged pages already match. WAL recovery copies remain available.",
+                images.len()
+            ),
         );
         self.boundary("after_checkpoint_write");
         self.data.sync()?;
         self.boundary("after_checkpoint_sync");
-        for id in 0..self.tree.meta.next_id {
+        for (id, image) in images.iter().chain([&(0, meta)]) {
             let mut actual = [0; PAGE_SIZE];
-            self.data.read_exact_at(page_offset(id), &mut actual)?;
-            if actual != self.tree.image(id)? {
+            self.data.read_exact_at(page_offset(*id), &mut actual)?;
+            if actual != *image {
                 return Err(Error::new(
                     "verification_failed",
                     format!("Checkpoint page {id} differs from committed state."),
@@ -633,7 +666,7 @@ impl<D: Storage, W: Storage> Engine<D, W> {
         self.boundary("after_wal_truncate");
         self.wal.sync()?;
         self.boundary("after_reset_sync");
-        Ok(())
+        Ok(images.len())
     }
     pub fn snapshot(&self) -> Result<Snapshot> {
         self.snapshot_page(1)

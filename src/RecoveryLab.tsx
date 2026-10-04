@@ -15,10 +15,10 @@ const scenarios = [
       "Kill after commit returns, before checkpoint. Both puts should recover from the synced log.",
   },
   {
-    boundary: "after_checkpoint_page:3",
+    boundary: "after_checkpoint_page:first",
     name: "During checkpoint",
     detail:
-      "Kill after checkpoint writes page 3, while other pages and the root metadata still need updating. The WAL holds the complete split.",
+      "Kill after checkpoint writes the first page the batch changed, while the other changed pages and the root metadata still need updating. Unchanged pages are never rewritten. The WAL holds the complete split.",
   },
   {
     boundary: "after_wal_truncate",
@@ -200,6 +200,7 @@ export function RecoveryLab({
                   {
                     run: result.run_id,
                     boundary: result.boundary,
+                    paused_at: result.paused_at,
                     scenario: result.scenario,
                     baseline: result.baseline,
                     attempted: result.attempted,

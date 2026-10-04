@@ -56,7 +56,7 @@ fn actual_process_termination_at_all_commit_and_checkpoint_boundaries() {
         "after_wal_sync",
         "after_commit_return",
         "before_checkpoint_write",
-        "after_checkpoint_page:3",
+        "after_checkpoint_page:first",
         "after_checkpoint_write",
         "after_checkpoint_sync",
         "after_wal_truncate",
@@ -72,6 +72,26 @@ fn actual_process_termination_at_all_commit_and_checkpoint_boundaries() {
                 scenario,
             ]));
             assert_eq!(report["boundary"], boundary);
+            let paused_at = report["paused_at"].as_str().unwrap();
+            if boundary == "after_checkpoint_page:first" {
+                // Only pages the batch changed are checkpointed, so the first
+                // one carries the recovered generation.
+                let page: u64 = paused_at
+                    .strip_prefix("after_checkpoint_page:")
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+                let snapshot = &report["snapshot"];
+                let summary = snapshot["pages"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|p| p["id"] == page)
+                    .unwrap();
+                assert_eq!(summary["generation"], snapshot["generation"]);
+            } else {
+                assert_eq!(paused_at, boundary);
+            }
             assert_eq!(report["process_terminated"], true);
             assert_eq!(report["commit_returned"], index >= 6);
             assert_eq!(

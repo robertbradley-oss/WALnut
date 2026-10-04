@@ -189,17 +189,29 @@ fn partial_wal_writes_and_failed_sync_or_readback_poison_without_false_acknowled
 
 #[test]
 fn torn_nodes_torn_metadata_and_mixed_checkpoints_are_repaired_from_changed_images() {
-    for page in [0, 1, 3, 59, 60, 61, 62] {
+    // Each write the checkpoint makes is torn in turn: the boundary before it
+    // arms a short write. Metadata is always written last.
+    let (_, _, mut dry) = fresh(116, true);
+    dry.batch(writes(116, 2)).unwrap();
+    let trace = Rc::new(RefCell::new(vec![]));
+    let captured = trace.clone();
+    dry.set_boundary_hook(move |name| {
+        if name == "before_checkpoint_write" || name.starts_with("after_checkpoint_page:") {
+            captured.borrow_mut().push(name.to_owned());
+        }
+    });
+    dry.checkpoint().unwrap();
+    let arming = trace.borrow().clone();
+    assert!(arming.len() > 2 && arming.len() < 62, "{arming:?}");
+    for armed in arming {
         for cut in [0, 17, 64, 2048, 4095] {
             let (data, log, mut engine) = fresh(116, true);
             engine.batch(writes(116, 2)).unwrap();
             let before = log.bytes();
             let captured = data.clone();
+            let selected = armed.clone();
             engine.set_boundary_hook(move |name| {
-                if (page == 1 && name == "before_checkpoint_write")
-                    || (page == 0 && name == "after_checkpoint_page:62")
-                    || (page > 1 && name == format!("after_checkpoint_page:{}", page - 1))
-                {
+                if name == selected {
                     captured.fail(Fault::Write(cut));
                 }
             });
@@ -447,4 +459,72 @@ fn explicit_legacy_upgrade_preserves_both_source_files_even_with_an_incomplete_t
             .as_deref(),
         Some("copied")
     );
+}
+
+fn written_pages(engine: &mut TestEngine) -> Vec<u32> {
+    let trace = Rc::new(RefCell::new(vec![]));
+    let captured = trace.clone();
+    engine.set_boundary_hook(move |name| {
+        if let Some(id) = name.strip_prefix("after_checkpoint_page:") {
+            captured.borrow_mut().push(id.parse().unwrap());
+        }
+    });
+    engine.checkpoint().unwrap();
+    engine.set_boundary_hook(|_| {});
+    trace.take()
+}
+
+#[test]
+fn checkpoint_writes_only_pages_that_differ_from_the_main_file() {
+    let (data, log, mut engine) = fresh(116, true);
+    engine.batch(writes(116, 2)).unwrap();
+    let mut changed = engine.snapshot().unwrap().changed_pages;
+    changed.retain(|id| *id != 0);
+    assert_eq!(written_pages(&mut engine), changed);
+    assert!(written_pages(&mut engine).is_empty());
+
+    // Pages changed by several commits are written once, and a valid main
+    // file found at reopen is trusted for every page it already holds.
+    let mut changed = std::collections::BTreeSet::new();
+    for i in [0, 117] {
+        engine.put(&key(i), &writes(i, 1)[0].value).unwrap();
+        changed.extend(engine.snapshot().unwrap().changed_pages);
+    }
+    changed.remove(&0);
+    drop(engine);
+    data.crash(true);
+    log.crash(true);
+    let mut reopened = Engine::open(data.clone(), log.clone(), true).unwrap();
+    let written = written_pages(&mut reopened);
+    assert_eq!(written, changed.into_iter().collect::<Vec<_>>());
+    assert!(written.len() < 10, "{written:?}");
+    drop(reopened);
+    data.crash(true);
+    log.crash(true);
+    assert_records(
+        &mut Engine::open(data.clone(), log.clone(), true).unwrap(),
+        118,
+    );
+
+    // A main file that failed validation is not trusted: every page is rewritten.
+    let mut engine = Engine::open(data.clone(), log.clone(), true).unwrap();
+    engine.put(&key(1), &writes(1, 1)[0].value).unwrap();
+    let captured = data.clone();
+    engine.set_boundary_hook(move |name| {
+        if name == "before_checkpoint_write" {
+            captured.fail(Fault::Write(64));
+        }
+    });
+    assert!(engine.checkpoint().is_err());
+    drop(engine);
+    data.crash(false);
+    log.crash(false);
+    let mut recovered = Engine::open(data.clone(), log.clone(), true).unwrap();
+    assert!(recovered.snapshot().unwrap().recovery.repaired_page);
+    let pages = recovered.snapshot().unwrap().page_count;
+    assert_eq!(written_pages(&mut recovered).len(), pages);
+    drop(recovered);
+    data.crash(true);
+    log.crash(true);
+    assert_records(&mut Engine::open(data, log, true).unwrap(), 118);
 }

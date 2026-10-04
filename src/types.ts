@@ -141,6 +141,8 @@ export interface WalFrame {
 export interface LabResult {
   run_id: string;
   boundary: string;
+  /** The engine boundary the worker actually stopped at. */
+  paused_at: string;
   scenario: "leaf_split" | "root_split";
   baseline: {
     record_count: number;

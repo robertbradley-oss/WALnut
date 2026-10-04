@@ -8,6 +8,9 @@ use std::{
 };
 use walnut_core::{Error, Result, create_file, open_file};
 
+/// A checkpoint writes only the pages that changed since the last one, so the
+/// lab pauses after whichever page it writes first rather than a fixed ID.
+const FIRST_CHECKPOINT_PAGE: &str = "after_checkpoint_page:first";
 pub const BOUNDARIES: &[&str] = &[
     "before_frame",
     "after_wal_header",
@@ -17,7 +20,7 @@ pub const BOUNDARIES: &[&str] = &[
     "after_wal_sync",
     "after_commit_return",
     "before_checkpoint_write",
-    "after_checkpoint_page:3",
+    FIRST_CHECKPOINT_PAGE,
     "after_checkpoint_write",
     "after_checkpoint_sync",
     "after_wal_truncate",
@@ -40,8 +43,12 @@ fn validate(boundary: &str, scenario: &str) -> Result<usize> {
         )),
     }
 }
-fn pause(boundary: &str) {
-    println!("WALNUT_PAUSED:{boundary}");
+fn reached(selected: &str, name: &str) -> bool {
+    name == selected
+        || (selected == FIRST_CHECKPOINT_PAGE && name.starts_with("after_checkpoint_page:"))
+}
+fn pause(boundary: &str, actual: &str) {
+    println!("WALNUT_PAUSED:{boundary} at {actual}");
     std::io::stdout()
         .flush()
         .expect("flush diagnostic boundary");
@@ -55,13 +62,13 @@ pub fn worker(path: &Path, boundary: &str, scenario: &str) -> Result<()> {
     let mut engine = open_file(path, true)?;
     let selected = boundary.to_owned();
     engine.set_boundary_hook(move |name| {
-        if name == selected {
-            pause(name);
+        if reached(&selected, name) {
+            pause(&selected, name);
         }
     });
     engine.batch(crate::workload::split_writes(count, 2))?;
     if boundary == "after_commit_return" {
-        pause(boundary);
+        pause(boundary, boundary);
     }
     engine.checkpoint()?;
     Err(Error::new(
@@ -132,12 +139,17 @@ pub fn run(directory: &Path, boundary: &str, scenario: &str) -> Result<Value> {
             "The worker did not report its pause point within 10 seconds.",
         )
     })??;
-    if line.trim() != format!("WALNUT_PAUSED:{boundary}") {
-        return Err(Error::new(
-            "lab_failed",
-            "The worker exited without confirming the requested pause point.",
-        ));
-    }
+    let paused_at = line
+        .trim()
+        .strip_prefix(&format!("WALNUT_PAUSED:{boundary} at "))
+        .filter(|actual| reached(boundary, actual))
+        .ok_or_else(|| {
+            Error::new(
+                "lab_failed",
+                "The worker exited without confirming the requested pause point.",
+            )
+        })?
+        .to_owned();
     let mut engine = open_file(&path, true)?;
     let records = engine.range("", None, 256)?.records;
     let outcome = match records.len() {
@@ -172,7 +184,7 @@ pub fn run(directory: &Path, boundary: &str, scenario: &str) -> Result<Value> {
     let mut snapshot = serde_json::to_value(state).unwrap();
     snapshot["database_name"] = json!("scenario.db");
     Ok(
-        json!({"run_id":run_id,"scenario":scenario,"boundary":boundary,"process_id":pid,"process_terminated":true,
+        json!({"run_id":run_id,"scenario":scenario,"boundary":boundary,"paused_at":paused_at,"process_id":pid,"process_terminated":true,
         "process_exit":status.to_string(),"outcome":outcome,"database_path":path,"snapshot":snapshot,
         "baseline":baseline,"attempted":attempted,"verified_records":records.len(),
         "failure_model":"process_termination","commit_returned":BOUNDARIES.iter().position(|b| *b == boundary).unwrap() >= BOUNDARIES.iter().position(|b| *b == "after_commit_return").unwrap()}),

@@ -85,7 +85,7 @@ Acknowledged commits recover whole under the [documented failure contract](docs/
 
 ### Measured, with context
 
-At 1,792 records on the documented Windows machine, tracing-off median point reads were about **0.4 µs**. Incremental commit verification then cut a write's CPU preparation from **3.8 ms to 42 µs**; on a Linux container a durable single-record update fell from **5.0 ms to 0.3 ms** and costs about the same at 128 or 1,792 records. Reads use the resident tree; writes include the normal sync/read-back path. These are different workloads, not a database comparison. [Method, latency distributions, hardware, raw samples, and tracing overhead →](docs/performance.md)
+At 1,792 records on the documented Windows machine, tracing-off median point reads were about **0.4 µs**. Incremental commit verification then cut a write's CPU preparation from **3.8 ms to 42 µs**; on a Linux container a durable single-record update fell from **5.0 ms to 0.3 ms** and costs about the same at 128 or 1,792 records. Checkpoints now write only changed pages: after 16 updates, **10.8 ms became 1.4 ms**. Reads use the resident tree; writes include the normal sync/read-back path. These are different workloads, not a database comparison. [Method, latency distributions, hardware, raw samples, and tracing overhead →](docs/performance.md)
 
 ## Verify and reproduce
 
