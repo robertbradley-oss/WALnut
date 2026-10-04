@@ -177,6 +177,10 @@ test("portable routes, keyboard playback and responsive page exploration", async
   });
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await expect(page.locator(".player-state")).toContainText("PAUSED");
+  // Playback may pass step 2 before the pause lands on a slow runner; return
+  // to it so the next step is always the stopped process.
+  await page.getByRole("button", { name: /^Step 2:/ }).click();
+  await expect(page.locator(".player-state")).toContainText("2/5");
   await page.getByRole("button", { name: "Next step" }).focus();
   await page.keyboard.press("Enter");
   await expect(page.locator(".story-stopped")).toBeVisible();
