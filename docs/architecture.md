@@ -33,7 +33,7 @@ The state checksum is still one CRC-32 over every encoded page. Each page's CRC 
 
 - **Staged:** 1–64 puts held in memory with a verified candidate tree. Reads and inspection still see the committed tree. Duplicate keys use the final value. Reopen discards staging.
 - **Committed:** changed page images and metadata have passed WAL sync and exact read-back. One batch increments the generation once. A new root becomes visible with all its pages.
-- **Checkpointed:** every node page and metadata have been synced and verified in the main file before the WAL is shortened and synced. A checkpoint preserves staging.
+- **Checkpointed:** every page that differs from the main file, then the metadata, has been written, synced and read back before the WAL is shortened and synced; the remaining pages already match. A checkpoint preserves staging.
 
 Immediate `put` and `batch` reject a pending staged batch. Either the transaction-count limit or the 32 MiB WAL limit returns `checkpoint_required` before writes and retains the candidate for checkpoint and retry. Failed I/O during commit/checkpoint poisons the handle; normal commands then require reopen.
 
@@ -45,7 +45,7 @@ Open validates both permanent file identities and every complete transaction. Th
 
 Recovery overlays the newest committed image for each changed page onto the checkpoint, then validates the resulting complete tree. Metadata includes a checksum of all node images, so a checkpoint containing individually valid pages from different generations cannot masquerade as a complete checkpoint. Missing allocated pages, broken leaf links, stale separators, and torn root metadata are detected or reconstructed from the retained WAL.
 
-Checkpoint writes node pages in ID order and metadata last. After main-file sync and read-back, it truncates the log to its permanent header and syncs the new length. If an interrupted reset leaves an obsolete log prefix beside a newer valid checkpoint, recovery syncs that checkpoint and clears the prefix before accepting appends. Retained WAL bytes are synced before recovered state is served.
+Checkpoint writes only the node pages whose committed image differs from the main file's, in ID order, and metadata last. It compares against the tree it last checkpointed or found valid at open; pages shared with that tree are skipped without comparison. A main file that failed validation at open is rewritten in full. After main-file sync and read-back, it truncates the log to its permanent header and syncs the new length. If an interrupted reset leaves an obsolete log prefix beside a newer valid checkpoint, recovery syncs that checkpoint and clears the prefix before accepting appends. Retained WAL bytes are synced before recovered state is served.
 
 ## Inspector fidelity
 
@@ -84,7 +84,7 @@ Each run creates a disposable pair under `recovery-lab/` beside the main databas
 
 The child opens that pair and pauses at an exact engine boundary. The parent waits for the boundary acknowledgment, terminates and reaps the child, then opens the files and checks every key/value and tree height. The receipt includes the process identity/exit, file path, baseline and recovered dimensions, attempted-record outcomes, and recovery metadata. The primary database is never supplied to the worker.
 
-Four boundaries are available in the UI. CLI tests exercise 13 boundaries for each workload, including a metadata WAL image and an individual checkpoint page. Core fault tests cover every emitted page boundary with both process-loss and modeled power-loss semantics. Unknown boundaries/workloads are rejected before creating files; timeout or invariant failure is an error. A paused orphan worker exits after 20 seconds. Lab files remain available locally for inspection.
+Four boundaries are available in the UI. CLI tests exercise 13 boundaries for each workload, including a metadata WAL image and the first page a checkpoint writes. Core fault tests cover every emitted page boundary with both process-loss and modeled power-loss semantics. Unknown boundaries/workloads are rejected before creating files; timeout or invariant failure is an error. A paused orphan worker exits after 20 seconds. Lab files remain available locally for inspection.
 
 ## Local API
 

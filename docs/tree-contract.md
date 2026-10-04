@@ -20,7 +20,9 @@ The WAL is limited to 1,024 transactions or 32 MiB, whichever comes first. A rej
 
 ## Checkpoint and recovery
 
-Checkpoint syncs the WAL, writes all committed node pages, writes metadata last, syncs the main file, and verifies every encoded image. Only then does it truncate the WAL to its permanent header and sync the new length. Per-page pause points allow tests to interrupt a checkpoint between individual page writes.
+Checkpoint syncs the WAL, writes in ID order every node page whose committed image differs from the one the main file holds, writes metadata last, syncs the main file, and reads back every page it wrote. Only then does it truncate the WAL to its permanent header and sync the new length. Per-page pause points allow tests to interrupt a checkpoint between individual page writes.
+
+A page the checkpoint skips is identical to the image the previous checkpoint wrote and read back, or that open validated as part of a complete checkpoint; only checkpoints write the main file, and a failed one poisons the handle until reopen. Every page that differs was changed by a transaction the WAL still retains, so an interrupted checkpoint is repaired from the log. When the main file failed validation at open, every page is rewritten; the pages outside the WAL then receive the bytes they already hold, which a torn write cannot change.
 
 Recovery overlays all committed WAL images onto the main pages before validating the resulting tree against its metadata/state checksum. This repairs torn pages, incomplete allocation, mixed checkpoints, and root changes. If the valid main checkpoint is newer than an old log prefix left by interrupted truncation, recovery syncs it and clears that prefix before accepting appends. It never falls back to an older tree when newer valid metadata cannot be recovered.
 

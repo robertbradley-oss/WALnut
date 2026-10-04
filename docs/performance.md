@@ -21,18 +21,18 @@ The fixed seed is `0x57414c6e7574`. Datasets contain **128, 512, and 1,792 recor
 
 Three trials per dataset run with tracing off and on; order alternates between trials. A sample is one complete operation, timed with Rust `Instant`, including its normal allocations. Inputs use the same seeded query order. `black_box` consumes results. The report keeps every sample and nearest-rank p50/p95/p99/min/max/mean; the tables below pool the three matching trials. The timer baseline is recorded separately. Very short reads are quantized by the local clock (about 100 ns), so sub-microsecond figures are approximate.
 
-| Measurement             | Samples per trial | Timed work                                                                                 |
-| ----------------------- | ----------------- | ------------------------------------------------------------------------------------------ |
-| Point hit               | 1,000             | Random existing key, owned value and real search path                                      |
-| Point miss              | 1,000             | Missing `absent/` prefix before the stored key range                                       |
-| Range                   | 100               | 64 ordered results using leaf links; starts leave room for all 64                          |
-| Snapshot                | 100               | Selected-page bytes, all node summaries, and bounded event/WAL history                     |
-| Snapshot + JSON         | 100               | Snapshot creation and serialization; no HTTP/browser work                                  |
-| Point + snapshot + JSON | 100               | The core work behind an inspected lookup; no HTTP/browser work                             |
-| Durable put             | 32                | Update an existing key with another 1,000-byte value                                       |
-| Durable batch           | 16                | 16 updates, one atomic commit and one WAL sync                                             |
-| Checkpoint              | 9                 | After one 16-update batch: WAL sync, all main pages, main sync/readback, WAL truncate/sync |
-| Recovery                | 9                 | Open/lock/decode/validate/sync a checkpoint plus 16 single-update WAL transactions         |
+| Measurement             | Samples per trial | Timed work                                                                                     |
+| ----------------------- | ----------------- | ---------------------------------------------------------------------------------------------- |
+| Point hit               | 1,000             | Random existing key, owned value and real search path                                          |
+| Point miss              | 1,000             | Missing `absent/` prefix before the stored key range                                           |
+| Range                   | 100               | 64 ordered results using leaf links; starts leave room for all 64                              |
+| Snapshot                | 100               | Selected-page bytes, all node summaries, and bounded event/WAL history                         |
+| Snapshot + JSON         | 100               | Snapshot creation and serialization; no HTTP/browser work                                      |
+| Point + snapshot + JSON | 100               | The core work behind an inspected lookup; no HTTP/browser work                                 |
+| Durable put             | 32                | Update an existing key with another 1,000-byte value                                           |
+| Durable batch           | 16                | 16 updates, one atomic commit and one WAL sync                                                 |
+| Checkpoint              | 9                 | After one 16-update batch: WAL sync, changed main pages, main sync/readback, WAL truncate/sync |
+| Recovery                | 9                 | Open/lock/decode/validate/sync a checkpoint plus 16 single-update WAL transactions             |
 
 Durable operations use the normal `File::sync_all` path and complete read-back verification. There is no relaxed durability mode. Recovery repeatedly closes and reopens the real pair with a warm OS file cache; it is not a process-launch benchmark or a cold boot. Every recovered database is compared against the full expected contents outside the timer.
 
@@ -115,7 +115,23 @@ Tracing off, pooled p50 in microseconds, before → after:
 | Checkpoint after 16 puts | 1331.5 → 1180.3 | 3516.6 → 3192.7 | 10353.4 → 9200.2 |
 | Recover 16 transactions  |   887.1 → 747.2 | 3061.2 → 2118.6 |  9290.5 → 7065.1 |
 
-A durable put is now dominated by the WAL write, sync and read-back and is roughly flat across dataset sizes. Recovery improved because opening encodes each page once instead of twice. Checkpoint is unchanged in kind: it still writes and verifies every node page, so it is now the operation whose cost grows with the database. Preparation still grows slightly with size because the candidate copies one pointer and folds one CRC per page.
+A durable put is now dominated by the WAL write, sync and read-back and is roughly flat across dataset sizes. Recovery improved because opening encodes each page once instead of twice. At that point checkpoint still wrote and verified every node page, which made it the write whose cost grew with the database; [the next change](#dirty-page-checkpoint) addressed it. Preparation still grows slightly with size because the candidate copies one pointer and folds one CRC per page.
+
+## Dirty-page checkpoint
+
+A checkpoint used to write and read back every node page. Now it writes only pages whose committed image differs from the one in the main file, encodes each once for both the write and the read-back, and skips pages it shares with the last checkpointed tree without comparing them. [The tree contract](tree-contract.md#checkpoint-and-recovery) explains why the pages it skips are already correct and how an interrupted checkpoint is still repaired from the WAL.
+
+Collected 2026-10-04 on a Linux cloud container: kernel 6.18, 4 logical CPUs of an Intel Xeon, about 16 GiB RAM, storage not characterized. It is a different container from the previous section's, so compare within this table only. _Before_ is `3262e1f`, the incremental-verification commit, run from a separate worktree; _after_ is the working tree with this change. Both report `dirty: true` for the same reasons as above. [Before JSON](measurements/checkpoint-before-linux.json.gz), [after JSON](measurements/checkpoint-after-linux.json.gz).
+
+Tracing off, pooled p50 in microseconds, before → after:
+
+| Operation                |    128 records |     512 records |     1792 records |
+| ------------------------ | -------------: | --------------: | ---------------: |
+| Checkpoint after 16 puts | 1300.2 → 766.2 | 3511.1 → 1140.2 | 10807.1 → 1447.9 |
+| Durable put              |  302.0 → 282.5 |   298.0 → 283.6 |    401.6 → 329.5 |
+| Recover 16 transactions  |  723.4 → 729.3 | 1963.5 → 2103.8 |  6680.6 → 6749.3 |
+
+The benchmark's 16 updates touch scattered leaves, so a larger tree still has more distinct changed pages and a slightly longer checkpoint, but cost now follows the pages changed rather than the pages allocated. Puts and recovery are unchanged within run-to-run noise. Opening a database still validates every page, so recovery remains the operation whose cost grows with the database; that is deliberate.
 
 ## Inspector profile
 

@@ -78,7 +78,7 @@ npm run walnut -- story work/stories checkpoint
 
 `batch <file> <json-array>` commits an array of `{"key":"...","value":"..."}` puts. `range` accepts `--end <exclusive-key>` and `--limit <1–256>`; its `next_key` resumes the scan inclusively against current committed data. Empty start includes all keys. `inspect <file> [page-id]` defaults to leaf page 1.
 
-The lab accepts `before_frame`, `after_wal_header`, `after_wal_page:0`, `after_frame`, `after_commit_marker`, `after_wal_sync`, `after_commit_return`, `before_checkpoint_write`, `after_checkpoint_page:3`, `after_checkpoint_write`, `after_checkpoint_sync`, `after_wal_truncate`, and `after_reset_sync`. Its optional workload is `leaf_split` or `root_split` (default). `story <directory> <split|recovery|checkpoint>` returns a complete JSON recording with source metadata, snapshots, every page's captured bytes, and the recovery worker's exit evidence where applicable.
+The lab accepts `before_frame`, `after_wal_header`, `after_wal_page:0`, `after_frame`, `after_commit_marker`, `after_wal_sync`, `after_commit_return`, `before_checkpoint_write`, `after_checkpoint_page:first` (after whichever changed page the checkpoint writes first; the report's `paused_at` names it), `after_checkpoint_write`, `after_checkpoint_sync`, `after_wal_truncate`, and `after_reset_sync`. Its optional workload is `leaf_split` or `root_split` (default). `story <directory> <split|recovery|checkpoint>` returns a complete JSON recording with source metadata, snapshots, every page's captured bytes, and the recovery worker's exit evidence where applicable.
 
 To retain a format-1 standalone page or format-2 pair, stop its owner and upgrade into a **new** format-3 pair:
 
